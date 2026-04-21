@@ -1,10 +1,8 @@
 import PropTypes from 'prop-types'
 import { getTiming } from './kitchenTiming'
 import { formatTimer } from '../shared/time'
-import { useNow } from '../shared/useNow'
 
-export function KitchenSidePanel({ order, warningRatio, onClose, onReady, onBeginHold, onEndHold }) {
-  const nowMs = useNow(1000)
+export function KitchenSidePanel({ order, warningRatio, onClose, onReady, onBeginHold, onEndHold, nowMs }) {
   const timing = getTiming(order, nowMs, warningRatio)
 
   return (
@@ -60,5 +58,6 @@ KitchenSidePanel.propTypes = {
   onClose: PropTypes.func.isRequired,
   onReady: PropTypes.func.isRequired,
   onBeginHold: PropTypes.func.isRequired,
-  onEndHold: PropTypes.func.isRequired
+  onEndHold: PropTypes.func.isRequired,
+  nowMs: PropTypes.number.isRequired
 }

@@ -1,10 +1,8 @@
 import PropTypes from 'prop-types'
 import { getTiming } from './kitchenTiming'
 import { formatTimer } from '../shared/time'
-import { useNow } from '../shared/useNow'
 
-export function KitchenOrderCard({ order, warningRatio, onOpen }) {
-  const nowMs = useNow(1000)
+export function KitchenOrderCard({ order, warningRatio, onOpen, nowMs }) {
   const timing = getTiming(order, nowMs, warningRatio)
 
   return (
@@ -59,5 +57,6 @@ export function KitchenOrderCard({ order, warningRatio, onOpen }) {
 KitchenOrderCard.propTypes = {
   order: PropTypes.object.isRequired,
   warningRatio: PropTypes.number.isRequired,
-  onOpen: PropTypes.func.isRequired
+  onOpen: PropTypes.func.isRequired,
+  nowMs: PropTypes.number.isRequired
 }
