@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
-import { getKitchenOrders, markReady, markCancel } from './api'
+import { getKitchenOrders, getSettings, markReady, markCancel } from './api'
 
 const POLL_MS = 5000
 const KITCHEN_BUILD = import.meta.env.VITE_BUILD_MARKER || 'kitchen-prod-v5'
@@ -23,14 +23,14 @@ function formatTime(sec = 0) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-function getTiming(order, nowMs) {
-  const elapsedSeconds = secondsSince(order.created_at, nowMs)
+function getTiming(order, nowMs, warningRatio = 0.7) {
+  const elapsedSeconds = secondsSince(order.accepted_at || order.created_at, nowMs)
   const targetPrepSeconds = Number(order.target_prep_seconds || 120)
   const progressRatio = targetPrepSeconds > 0 ? elapsedSeconds / targetPrepSeconds : 0
 
   let timeState = 'normal'
   if (progressRatio >= 1) timeState = 'overdue'
-  else if (progressRatio >= 0.7) timeState = 'warning'
+  else if (progressRatio >= warningRatio) timeState = 'warning'
 
   return {
     elapsedSeconds,
@@ -111,17 +111,17 @@ function mergeOrders(prevOrders, nextOrdersRaw) {
   return changed ? nextOrders : prevOrders
 }
 
-const KitchenOrderCard = memo(function KitchenOrderCard({ order, onOpen }) {
+const KitchenOrderCard = memo(function KitchenOrderCard({ order, onOpen, warningRatio }) {
   const rootRef = useRef(null)
   const timerRef = useRef(null)
   const barRef = useRef(null)
   const stateRef = useRef(null)
 
-  const initialTiming = useMemo(() => getTiming(order, Date.now()), [order])
+  const initialTiming = useMemo(() => getTiming(order, Date.now(), warningRatio), [order, warningRatio])
 
   useEffect(() => {
     function applyTiming() {
-      const timing = getTiming(order, Date.now())
+      const timing = getTiming(order, Date.now(), warningRatio)
 
       if (timerRef.current) {
         timerRef.current.textContent = formatTime(timing.elapsedSeconds)
@@ -145,7 +145,7 @@ const KitchenOrderCard = memo(function KitchenOrderCard({ order, onOpen }) {
     applyTiming()
     const timer = setInterval(applyTiming, 1000)
     return () => clearInterval(timer)
-  }, [order])
+  }, [order, warningRatio])
 
   return (
     <div
@@ -225,11 +225,13 @@ KitchenOrderCard.propTypes = {
       modifier_lines: PropTypes.arrayOf(PropTypes.string)
     }))
   }).isRequired,
-  onOpen: PropTypes.func.isRequired
+  onOpen: PropTypes.func.isRequired,
+  warningRatio: PropTypes.number.isRequired
 }
 
 const KitchenSidePanel = memo(function KitchenSidePanel({
   order,
+  warningRatio,
   onClose,
   onReady,
   onBeginHold,
@@ -238,11 +240,11 @@ const KitchenSidePanel = memo(function KitchenSidePanel({
   const elapsedRef = useRef(null)
   const stateRef = useRef(null)
 
-  const initialTiming = useMemo(() => getTiming(order, Date.now()), [order])
+  const initialTiming = useMemo(() => getTiming(order, Date.now(), warningRatio), [order, warningRatio])
 
   useEffect(() => {
     function applyTiming() {
-      const timing = getTiming(order, Date.now())
+      const timing = getTiming(order, Date.now(), warningRatio)
 
       if (elapsedRef.current) {
         elapsedRef.current.textContent = formatTime(timing.elapsedSeconds)
@@ -261,7 +263,7 @@ const KitchenSidePanel = memo(function KitchenSidePanel({
     applyTiming()
     const timer = setInterval(applyTiming, 1000)
     return () => clearInterval(timer)
-  }, [order])
+  }, [order, warningRatio])
 
   return (
     <div className="kitchen-side-overlay" onClick={onClose}>
@@ -358,6 +360,7 @@ const KitchenSidePanel = memo(function KitchenSidePanel({
 
 KitchenSidePanel.propTypes = {
   order: KitchenOrderCard.propTypes.order,
+  warningRatio: PropTypes.number.isRequired,
   onClose: PropTypes.func.isRequired,
   onReady: PropTypes.func.isRequired,
   onBeginHold: PropTypes.func.isRequired,
@@ -367,6 +370,7 @@ KitchenSidePanel.propTypes = {
 export default function KitchenPage() {
   const [orders, setOrders] = useState([])
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [warningRatio, setWarningRatio] = useState(0.7)
   const selectedOrderRef = useRef(null)
   const holdTimerRef = useRef(null)
   const holdTriggeredRef = useRef(false)
@@ -401,6 +405,10 @@ export default function KitchenPage() {
 
   useEffect(() => {
     load(true)
+    getSettings().then((payload) => {
+      const ratio = Number(payload?.effective?.kitchen?.warning_ratio ?? 0.7)
+      setWarningRatio(Number.isFinite(ratio) ? Math.min(0.95, Math.max(0.1, ratio)) : 0.7)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -465,6 +473,7 @@ export default function KitchenPage() {
           <KitchenOrderCard
             key={order.id}
             order={order}
+            warningRatio={warningRatio}
             onOpen={(snapshot) => setSelectedOrder(snapshot)}
           />
         ))}
@@ -473,6 +482,7 @@ export default function KitchenPage() {
       {selectedOrder && (
         <KitchenSidePanel
           order={selectedOrder}
+          warningRatio={warningRatio}
           onClose={async () => {
             setSelectedOrder(null)
             await load(true)

@@ -45,6 +45,7 @@ class OrderResponse(BaseModel):
     actual_prep_seconds: Optional[int] = None
     is_overdue: bool
     order_snapshot: Optional[dict] = None
+    print_result: Optional[dict] = None
     items: List[dict]
 
 

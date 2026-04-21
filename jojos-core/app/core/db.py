@@ -95,6 +95,23 @@ def init_db():
         )
         """)
 
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS print_jobs (
+            id TEXT PRIMARY KEY,
+            order_id TEXT NOT NULL,
+            job_type TEXT NOT NULL,
+            printer_host TEXT NOT NULL,
+            printer_port INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            payload_json TEXT NOT NULL,
+            rendered_label TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent_at TEXT,
+            last_error TEXT
+        )
+        """)
+
         cur.execute("INSERT OR IGNORE INTO sync_status (id) VALUES (1)")
 
         order_needed_columns = [
