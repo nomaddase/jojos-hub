@@ -3,11 +3,13 @@ import { getSettings, markCancel, markReady } from './api'
 import { KitchenOrderCard } from './kitchen/KitchenOrderCard'
 import { KitchenSidePanel } from './kitchen/KitchenSidePanel'
 import { useKitchenOrders } from './kitchen/useKitchenOrders'
+import { useNow } from './shared/useNow'
 
 const KITCHEN_BUILD = import.meta.env.VITE_BUILD_MARKER || 'kitchen-prod-final'
 
 export default function KitchenPage() {
   const { orders, reload } = useKitchenOrders()
+  const nowMs = useNow(1000)
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [warningRatio, setWarningRatio] = useState(0.7)
   const [actionPending, setActionPending] = useState(false)
@@ -70,7 +72,13 @@ export default function KitchenPage() {
 
       <div className="kitchen-grid">
         {orders.map((order) => (
-          <KitchenOrderCard key={order.id} order={order} warningRatio={warningRatio} onOpen={setSelectedOrder} />
+          <KitchenOrderCard
+            key={order.id}
+            order={order}
+            warningRatio={warningRatio}
+            onOpen={setSelectedOrder}
+            nowMs={nowMs}
+          />
         ))}
       </div>
 
@@ -92,6 +100,7 @@ export default function KitchenPage() {
           }}
           onBeginHold={(e) => beginHold(selectedOrder.id, e)}
           onEndHold={endHold}
+          nowMs={nowMs}
         />
       )}
     </div>

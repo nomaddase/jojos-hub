@@ -1,7 +1,8 @@
 import { secondsSince } from '../shared/time'
 
 export function getTiming(order, nowMs, warningRatio = 0.7) {
-  const elapsedSeconds = secondsSince(order.accepted_at || order.created_at, nowMs)
+  const startAt = order.timer_started_at || order.accepted_at || order.created_at
+  const elapsedSeconds = secondsSince(startAt, nowMs)
   const targetPrepSeconds = Number(order.target_prep_seconds || 120)
   const progressRatio = targetPrepSeconds > 0 ? elapsedSeconds / targetPrepSeconds : 0
 
@@ -39,6 +40,7 @@ export function mergeOrders(prevOrders, nextOrdersRaw) {
   const nextOrders = nextOrdersRaw.map((order) => {
     const normalized = {
       ...order,
+      timer_started_at: order.accepted_at || order.created_at || null,
       service_mode: order.service_mode || 'dine_in',
       items: Array.isArray(order.items) ? order.items : [],
       __signature: buildOrderSignature(order)
