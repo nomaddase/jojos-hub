@@ -17,6 +17,7 @@ from app.modules.orders.service import (
     seconds_between,
     seconds_since,
     utc_now_iso,
+    _parse_json,
 )
 
 router = APIRouter()
@@ -93,8 +94,10 @@ def create_order(payload: CreateOrderRequest):
     created_at = utc_now_iso()
 
     settings = get_effective_settings()
-    enabled_modes = settings.get("service_modes", {}).get("enabled", ["dine_in", "takeaway"])
-    normalized_mode = (payload.service_mode or "dine_in").strip().lower()
+    service_modes = settings.get("service_modes", {})
+    enabled_modes = service_modes.get("enabled", ["dine_in", "takeaway"])
+    default_mode = service_modes.get("default", "dine_in")
+    normalized_mode = (payload.service_mode or default_mode).strip().lower()
     if normalized_mode not in enabled_modes:
         raise HTTPException(status_code=400, detail="Unsupported service_mode")
 
@@ -138,6 +141,17 @@ def create_order(payload: CreateOrderRequest):
         "target_prep_seconds": target_prep_seconds,
         "total": total,
         "currency": "KZT",
+        "printing": {
+            "receipt_type": "kitchen+guest",
+            "timezone": "UTC",
+            "reprint_count": 0,
+        },
+        "fulfillment": {
+            "status": "created",
+            "accepted_at": None,
+            "ready_at": None,
+            "cancelled_at": None,
+        },
         "items": snapshot_items,
     }
 
@@ -229,13 +243,17 @@ def set_order_ready(order_id: str):
         target_prep_seconds = row["target_prep_seconds"] or 120
         is_overdue = 1 if (actual_prep_seconds is not None and actual_prep_seconds > target_prep_seconds) else 0
 
+        snapshot = _parse_json(row["order_snapshot_json"]) or {}
+        snapshot.setdefault("fulfillment", {})
+        snapshot["fulfillment"].update({"status": "ready", "accepted_at": accepted_at, "ready_at": ready_at})
+
         cur.execute(
             """
             UPDATE orders
-            SET status = ?, accepted_at = ?, ready_at = ?, actual_prep_seconds = ?, is_overdue = ?
+            SET status = ?, accepted_at = ?, ready_at = ?, actual_prep_seconds = ?, is_overdue = ?, order_snapshot_json = ?
             WHERE id = ?
             """,
-            ("ready", accepted_at, ready_at, actual_prep_seconds, is_overdue, order_id),
+            ("ready", accepted_at, ready_at, actual_prep_seconds, is_overdue, json.dumps(snapshot, ensure_ascii=False), order_id),
         )
         conn.commit()
 
@@ -253,10 +271,22 @@ def cancel_order(order_id: str):
             raise HTTPException(status_code=404, detail="Order not found")
 
         cancelled_at = utc_now_iso()
+        accepted_at = row["accepted_at"] or row["created_at"]
+        actual_prep_seconds = seconds_between(accepted_at, cancelled_at)
+
+        snapshot = _parse_json(row["order_snapshot_json"]) or {}
+        snapshot.setdefault("fulfillment", {})
+        snapshot["fulfillment"].update(
+            {"status": "cancelled", "accepted_at": row["accepted_at"], "cancelled_at": cancelled_at}
+        )
 
         cur.execute(
-            "UPDATE orders SET status = ?, cancelled_at = ? WHERE id = ?",
-            ("cancelled", cancelled_at, order_id),
+            """
+            UPDATE orders
+            SET status = ?, cancelled_at = ?, actual_prep_seconds = ?, order_snapshot_json = ?
+            WHERE id = ?
+            """,
+            ("cancelled", cancelled_at, actual_prep_seconds, json.dumps(snapshot, ensure_ascii=False), order_id),
         )
         conn.commit()
 

@@ -5,7 +5,7 @@ from typing import Any
 
 from app.core.db import get_conn
 
-DEFAULT_SETTINGS = {
+RUNTIME_DEFAULTS = {
     "languages": ["ru", "kz", "en"],
     "default_language": "ru",
     "idle_timeout_seconds": 30,
@@ -44,6 +44,64 @@ def _set_nested(target: dict, dotted_key: str, value: Any):
     node[parts[-1]] = value
 
 
+def _clamp(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _normalize_language(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _normalize_mode(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _sanitize_effective_settings(raw_settings: dict) -> dict:
+    result = deepcopy(raw_settings)
+
+    languages = result.get("languages")
+    if not isinstance(languages, list) or not languages:
+        languages = deepcopy(RUNTIME_DEFAULTS["languages"])
+    languages = [lang for lang in (_normalize_language(v) for v in languages) if lang]
+    if not languages:
+        languages = deepcopy(RUNTIME_DEFAULTS["languages"])
+    result["languages"] = languages
+
+    default_language = _normalize_language(result.get("default_language"))
+    if default_language not in languages:
+        default_language = languages[0]
+    result["default_language"] = default_language
+
+    idle_timeout_seconds = int(result.get("idle_timeout_seconds") or RUNTIME_DEFAULTS["idle_timeout_seconds"])
+    result["idle_timeout_seconds"] = int(_clamp(idle_timeout_seconds, 10, 600))
+
+    kitchen = result.get("kitchen") if isinstance(result.get("kitchen"), dict) else {}
+    warning_ratio = float(kitchen.get("warning_ratio", RUNTIME_DEFAULTS["kitchen"]["warning_ratio"]))
+    kitchen["warning_ratio"] = _clamp(warning_ratio, 0.1, 0.95)
+    result["kitchen"] = kitchen
+
+    display = result.get("display") if isinstance(result.get("display"), dict) else {}
+    visibility = int(display.get("ready_visibility_seconds", RUNTIME_DEFAULTS["display"]["ready_visibility_seconds"]))
+    display["ready_visibility_seconds"] = int(_clamp(visibility, 30, 1800))
+    result["display"] = display
+
+    service_modes = result.get("service_modes") if isinstance(result.get("service_modes"), dict) else {}
+    enabled = service_modes.get("enabled") if isinstance(service_modes.get("enabled"), list) else []
+    enabled = [mode for mode in (_normalize_mode(v) for v in enabled) if mode]
+    if not enabled:
+        enabled = deepcopy(RUNTIME_DEFAULTS["service_modes"]["enabled"])
+
+    default_mode = _normalize_mode(service_modes.get("default"))
+    if default_mode not in enabled:
+        default_mode = enabled[0]
+
+    service_modes["enabled"] = enabled
+    service_modes["default"] = default_mode
+    result["service_modes"] = service_modes
+
+    return result
+
+
 def get_setting_value(key: str, default: Any = None) -> Any:
     setting_key = key if key.startswith("setting:") else f"setting:{key}"
 
@@ -60,7 +118,7 @@ def get_setting_value(key: str, default: Any = None) -> Any:
 
 
 def get_effective_settings() -> dict:
-    result = deepcopy(DEFAULT_SETTINGS)
+    result = deepcopy(RUNTIME_DEFAULTS)
 
     with closing(get_conn()) as conn:
         cur = conn.cursor()
@@ -72,4 +130,4 @@ def get_effective_settings() -> dict:
         parsed = _parse_setting_value(row["value"])
         _set_nested(result, raw_key, parsed)
 
-    return result
+    return _sanitize_effective_settings(result)

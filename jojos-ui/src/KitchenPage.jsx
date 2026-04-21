@@ -1,8 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import PropTypes from 'prop-types'
 import { getKitchenOrders, markReady, markCancel } from './api'
 
 const POLL_MS = 5000
-const KITCHEN_BUILD = 'kitchen-prod-v4'
+const KITCHEN_BUILD = import.meta.env.VITE_BUILD_MARKER || 'kitchen-prod-v5'
 
 function parseIsoToMs(iso) {
   if (!iso) return null
@@ -208,6 +209,25 @@ const KitchenOrderCard = memo(function KitchenOrderCard({ order, onOpen }) {
   )
 })
 
+
+KitchenOrderCard.propTypes = {
+  order: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    number: PropTypes.string.isRequired,
+    created_at: PropTypes.string,
+    target_prep_seconds: PropTypes.number,
+    service_mode: PropTypes.string,
+    items: PropTypes.arrayOf(PropTypes.shape({
+      item_id: PropTypes.string,
+      name: PropTypes.string,
+      display_name: PropTypes.string,
+      qty: PropTypes.number,
+      modifier_lines: PropTypes.arrayOf(PropTypes.string)
+    }))
+  }).isRequired,
+  onOpen: PropTypes.func.isRequired
+}
+
 const KitchenSidePanel = memo(function KitchenSidePanel({
   order,
   onClose,
@@ -334,6 +354,15 @@ const KitchenSidePanel = memo(function KitchenSidePanel({
     </div>
   )
 })
+
+
+KitchenSidePanel.propTypes = {
+  order: KitchenOrderCard.propTypes.order,
+  onClose: PropTypes.func.isRequired,
+  onReady: PropTypes.func.isRequired,
+  onBeginHold: PropTypes.func.isRequired,
+  onEndHold: PropTypes.func.isRequired
+}
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState([])

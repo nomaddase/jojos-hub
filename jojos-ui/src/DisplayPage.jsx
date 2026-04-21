@@ -1,33 +1,100 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getDisplayOrders } from './api'
 
-const MAX_ZONE_CARDS = 12
+const POLL_MS = 2000
+const PAGE_MS = 9000
 
-export default function DisplayPage() {
-  const [data, setData] = useState({
-    accepted_orders: [],
-    ready_orders: []
-  })
+function mergeOrderLists(prev, next) {
+  if (!Array.isArray(next)) return prev
+  if (prev.length !== next.length) return next
 
-  async function load() {
-    try {
-      const json = await getDisplayOrders()
-      setData(json || { accepted_orders: [], ready_orders: [] })
-    } catch (e) {
-      console.error(e)
+  for (let i = 0; i < next.length; i += 1) {
+    const a = prev[i]
+    const b = next[i]
+    if (!a || !b) return next
+    if (a.id !== b.id || a.status !== b.status || a.wait_seconds !== b.wait_seconds || a.number !== b.number) {
+      return next
     }
   }
 
+  return prev
+}
+
+function chunkOrders(orders, perPage) {
+  if (!orders.length) return [[]]
+  const pages = []
+  for (let i = 0; i < orders.length; i += perPage) {
+    pages.push(orders.slice(i, i + perPage))
+  }
+  return pages
+}
+
+function getAdaptiveGridClass(totalCount) {
+  if (totalCount <= 6) return 'cozy'
+  if (totalCount <= 12) return 'dense'
+  return 'ultra'
+}
+
+export default function DisplayPage() {
+  const [data, setData] = useState({ accepted_orders: [], ready_orders: [] })
+  const [page, setPage] = useState(0)
+
   useEffect(() => {
+    async function load() {
+      try {
+        const json = await getDisplayOrders()
+        setData(prev => {
+          const nextData = json || { accepted_orders: [], ready_orders: [] }
+          return {
+            ...nextData,
+            accepted_orders: mergeOrderLists(prev.accepted_orders, nextData.accepted_orders),
+            ready_orders: mergeOrderLists(prev.ready_orders, nextData.ready_orders)
+          }
+        })
+      } catch (e) {
+        console.error(e)
+      }
+    }
+
     load()
-    const timer = setInterval(load, 2000)
+    const timer = setInterval(load, POLL_MS)
     return () => clearInterval(timer)
   }, [])
 
-  const acceptedVisible = data.accepted_orders.slice(0, MAX_ZONE_CARDS)
-  const acceptedOverflow = Math.max(0, data.accepted_orders.length - MAX_ZONE_CARDS)
-  const readyVisible = data.ready_orders.slice(0, MAX_ZONE_CARDS)
-  const readyOverflow = Math.max(0, data.ready_orders.length - MAX_ZONE_CARDS)
+  const totalCards = data.accepted_orders.length + data.ready_orders.length
+  const densityClass = getAdaptiveGridClass(totalCards)
+  const cardsPerZonePage = densityClass === 'cozy' ? 6 : densityClass === 'dense' ? 12 : 18
+
+  const acceptedPages = useMemo(
+    () => chunkOrders(data.accepted_orders, cardsPerZonePage),
+    [cardsPerZonePage, data.accepted_orders]
+  )
+  const readyPages = useMemo(
+    () => chunkOrders(data.ready_orders, cardsPerZonePage),
+    [cardsPerZonePage, data.ready_orders]
+  )
+
+  const pageCount = Math.max(acceptedPages.length, readyPages.length)
+
+  useEffect(() => {
+    setPage(prev => {
+      if (pageCount <= 1) return 0
+      return Math.min(prev, pageCount - 1)
+    })
+  }, [pageCount])
+
+  useEffect(() => {
+    if (pageCount <= 1) return undefined
+
+    const timer = setInterval(() => {
+      setPage(prev => (prev + 1) % pageCount)
+    }, PAGE_MS)
+
+    return () => clearInterval(timer)
+  }, [pageCount])
+
+  const acceptedVisible = acceptedPages[Math.min(page, acceptedPages.length - 1)] || []
+  const readyVisible = readyPages[Math.min(page, readyPages.length - 1)] || []
 
   return (
     <div className="screen display-board">
@@ -40,22 +107,16 @@ export default function DisplayPage() {
           <div className="display-zone-count">{data.accepted_orders.length}</div>
         </div>
 
-        {data.accepted_orders.length === 0 ? (
+        {acceptedVisible.length === 0 ? (
           <div className="display-zone-empty">Нет активных принятых заказов</div>
         ) : (
-          <div className="display-order-grid">
+          <div className={`display-order-grid ${densityClass}`}>
             {acceptedVisible.map(order => (
               <div className="display-order-card accepted" key={order.id}>
                 <div className="display-order-number">#{order.number}</div>
-                <div className="display-order-status">Ожидает</div>
+                <div className="display-order-status">Ожидает · {Math.floor((order.wait_seconds || 0) / 60)} мин</div>
               </div>
             ))}
-            {acceptedOverflow > 0 && (
-              <div className="display-order-card overflow" key="accepted-overflow">
-                <div className="display-order-number">+{acceptedOverflow}</div>
-                <div className="display-order-status">других заказов</div>
-              </div>
-            )}
           </div>
         )}
       </section>
@@ -69,22 +130,22 @@ export default function DisplayPage() {
           <div className="display-zone-count">{data.ready_orders.length}</div>
         </div>
 
-        {data.ready_orders.length === 0 ? (
+        {readyVisible.length === 0 ? (
           <div className="display-zone-empty ready">Готовых заказов пока нет</div>
         ) : (
-          <div className="display-order-grid">
+          <div className={`display-order-grid ${densityClass}`}>
             {readyVisible.map(order => (
               <div className="display-order-card ready" key={order.id}>
                 <div className="display-order-number">#{order.number}</div>
-                <div className="display-order-status">Готов</div>
+                <div className="display-order-status">Готов · {Math.floor((order.wait_seconds || 0) / 60)} мин</div>
               </div>
             ))}
-            {readyOverflow > 0 && (
-              <div className="display-order-card overflow" key="ready-overflow">
-                <div className="display-order-number">+{readyOverflow}</div>
-                <div className="display-order-status">ожидают выдачу</div>
-              </div>
-            )}
+          </div>
+        )}
+
+        {pageCount > 1 && (
+          <div className="display-page-indicator">
+            Страница {page + 1} / {pageCount}
           </div>
         )}
       </section>

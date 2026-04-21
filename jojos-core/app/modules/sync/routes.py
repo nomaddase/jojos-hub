@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from contextlib import closing
+
+from fastapi import APIRouter, HTTPException
 
 from app.core.db import get_conn
 from app.modules.settings.service import get_effective_settings
@@ -56,7 +57,8 @@ def kitchen_daily_summary(date: str | None = None):
                 status,
                 created_at,
                 ready_at,
-                cancelled_at
+                cancelled_at,
+                accepted_at
             FROM orders
             WHERE created_at >= ? AND created_at < ?
             ORDER BY created_at ASC
@@ -69,21 +71,37 @@ def kitchen_daily_summary(date: str | None = None):
         rows = cur.fetchall()
 
     total = len(rows)
-    ready = sum(1 for r in rows if r["status"] == "ready")
-    cancelled = sum(1 for r in rows if r["status"] == "cancelled")
-    overdue_count = sum(1 for r in rows if r["is_overdue"])
-    prep_values = [r["actual_prep_seconds"] for r in rows if r["actual_prep_seconds"] is not None]
+    ready_rows = [r for r in rows if r["status"] == "ready"]
+    cancelled_rows = [r for r in rows if r["status"] == "cancelled"]
+    completed_rows = [r for r in rows if r["status"] in ("ready", "cancelled")]
+
+    overdue_ready_count = sum(1 for r in ready_rows if r["is_overdue"])
+    prep_values = [r["actual_prep_seconds"] for r in ready_rows if r["actual_prep_seconds"] is not None]
     avg_prep = int(sum(prep_values) / len(prep_values)) if prep_values else 0
+
+    target_values = [int(r["target_prep_seconds"] or 0) for r in ready_rows]
+    avg_target = int(sum(target_values) / len(target_values)) if target_values else 0
+
+    variance_values = [
+        int(r["actual_prep_seconds"] or 0) - int(r["target_prep_seconds"] or 0)
+        for r in ready_rows
+        if r["actual_prep_seconds"] is not None
+    ]
+    avg_variance = int(sum(variance_values) / len(variance_values)) if variance_values else 0
 
     return {
         "date": str(day),
         "summary": {
             "orders_total": total,
-            "orders_ready": ready,
-            "orders_cancelled": cancelled,
+            "orders_ready": len(ready_rows),
+            "orders_cancelled": len(cancelled_rows),
+            "orders_completed": len(completed_rows),
             "avg_prep_sec": avg_prep,
-            "overdue_count": overdue_count,
-            "overdue_ratio": (overdue_count / total) if total else 0,
+            "avg_target_prep_sec": avg_target,
+            "avg_prep_variance_sec": avg_variance,
+            "overdue_count": overdue_ready_count,
+            "overdue_ratio": (overdue_ready_count / len(ready_rows)) if ready_rows else 0,
+            "cancelled_ratio": (len(cancelled_rows) / total) if total else 0,
         },
         "orders": [
             {
@@ -92,9 +110,13 @@ def kitchen_daily_summary(date: str | None = None):
                 "service_mode": r["service_mode"] or "dine_in",
                 "target_prep_sec": r["target_prep_seconds"],
                 "actual_prep_sec": r["actual_prep_seconds"],
+                "prep_variance_sec": None
+                if r["actual_prep_seconds"] is None
+                else int(r["actual_prep_seconds"] or 0) - int(r["target_prep_seconds"] or 0),
                 "is_overdue": bool(r["is_overdue"]),
                 "status": r["status"],
                 "created_at": r["created_at"],
+                "accepted_at": r["accepted_at"],
                 "ready_at": r["ready_at"],
                 "cancelled_at": r["cancelled_at"],
             }

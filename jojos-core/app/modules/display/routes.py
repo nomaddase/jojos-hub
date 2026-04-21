@@ -4,13 +4,13 @@ from fastapi import APIRouter
 
 from app.core.db import get_conn
 from app.modules.orders.service import seconds_since
-from app.modules.settings.service import get_setting_value
+from app.modules.settings.service import get_effective_settings
 
 router = APIRouter()
 
 
 def build_display_payload():
-    ready_visible_seconds = int(get_setting_value("display.ready_visibility_seconds", 300))
+    ready_visible_seconds = int(get_effective_settings().get("display", {}).get("ready_visibility_seconds", 300))
 
     with closing(get_conn()) as conn:
         cur = conn.cursor()

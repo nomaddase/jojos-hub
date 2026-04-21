@@ -8,13 +8,13 @@ from app.modules.orders.service import (
     mark_in_progress_if_created,
     seconds_since,
 )
-from app.modules.settings.service import get_setting_value
+from app.modules.settings.service import get_effective_settings
 
 router = APIRouter()
 
 
 def build_kitchen_payload():
-    warning_ratio = float(get_setting_value("kitchen.warning_ratio", 0.7))
+    warning_ratio = float(get_effective_settings().get("kitchen", {}).get("warning_ratio", 0.7))
 
     with closing(get_conn()) as conn:
         cur = conn.cursor()
