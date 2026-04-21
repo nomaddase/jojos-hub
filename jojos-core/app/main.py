@@ -6,6 +6,7 @@ from app.core.config import MEDIA_DIR, STATIC_DIR
 from app.core.db import init_db
 from app.modules.catalog.routes import router as catalog_router
 from app.modules.display.routes import router as display_router
+from app.modules.events.routes import router as events_router
 from app.modules.inventory.routes import router as inventory_router
 from app.modules.kitchen.routes import router as kitchen_router
 from app.modules.media.routes import router as media_router
@@ -35,6 +36,7 @@ app.include_router(orders_router)
 app.include_router(printing_router)
 app.include_router(kitchen_router)
 app.include_router(display_router)
+app.include_router(events_router)
 app.include_router(inventory_router)
 app.include_router(media_router)
 app.include_router(sync_router)

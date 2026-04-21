@@ -1,416 +1,20 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import PropTypes from 'prop-types'
-import { getKitchenOrders, getSettings, markReady, markCancel } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { getSettings, markCancel, markReady } from './api'
+import { KitchenOrderCard } from './kitchen/KitchenOrderCard'
+import { KitchenSidePanel } from './kitchen/KitchenSidePanel'
+import { useKitchenOrders } from './kitchen/useKitchenOrders'
 
-const POLL_MS = 5000
-const KITCHEN_BUILD = import.meta.env.VITE_BUILD_MARKER || 'kitchen-prod-v5'
-
-function parseIsoToMs(iso) {
-  if (!iso) return null
-  const ms = Date.parse(iso)
-  return Number.isNaN(ms) ? null : ms
-}
-
-function secondsSince(iso, nowMs) {
-  const startMs = parseIsoToMs(iso)
-  if (!startMs) return 0
-  return Math.max(0, Math.floor((nowMs - startMs) / 1000))
-}
-
-function formatTime(sec = 0) {
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-function getTiming(order, nowMs, warningRatio = 0.7) {
-  const elapsedSeconds = secondsSince(order.accepted_at || order.created_at, nowMs)
-  const targetPrepSeconds = Number(order.target_prep_seconds || 120)
-  const progressRatio = targetPrepSeconds > 0 ? elapsedSeconds / targetPrepSeconds : 0
-
-  let timeState = 'normal'
-  if (progressRatio >= 1) timeState = 'overdue'
-  else if (progressRatio >= warningRatio) timeState = 'warning'
-
-  return {
-    elapsedSeconds,
-    targetPrepSeconds,
-    progressRatio,
-    timeState
-  }
-}
-
-function buildOrderSignature(order) {
-  return JSON.stringify({
-    id: order.id,
-    number: order.number,
-    status: order.status,
-    created_at: order.created_at,
-    accepted_at: order.accepted_at,
-    ready_at: order.ready_at,
-    cancelled_at: order.cancelled_at,
-    total: order.total,
-    target_prep_seconds: order.target_prep_seconds,
-    contains_sandwich: order.contains_sandwich,
-    service_mode: order.service_mode,
-    actual_prep_seconds: order.actual_prep_seconds,
-    is_overdue: order.is_overdue,
-    items: (order.items || []).map(item => ({
-      item_id: item.item_id,
-      name: item.name,
-      display_name: item.display_name,
-      qty: item.qty,
-      price: item.price,
-      modifier_lines: item.modifier_lines || []
-    }))
-  })
-}
-
-function normalizeOrder(order) {
-  return {
-    ...order,
-    service_mode: order.service_mode || 'dine_in',
-    items: Array.isArray(order.items) ? order.items : [],
-    __signature: buildOrderSignature(order)
-  }
-}
-
-function mergeOrders(prevOrders, nextOrdersRaw) {
-  const prevMap = new Map(prevOrders.map(order => [order.id, order]))
-  const nextOrders = []
-
-  for (const raw of nextOrdersRaw) {
-    const normalized = normalizeOrder(raw)
-    const prev = prevMap.get(normalized.id)
-
-    if (prev && prev.__signature === normalized.__signature) {
-      nextOrders.push(prev)
-    } else {
-      nextOrders.push(normalized)
-    }
-  }
-
-  nextOrders.sort((a, b) => {
-    const aMs = parseIsoToMs(a.created_at) || 0
-    const bMs = parseIsoToMs(b.created_at) || 0
-    return aMs - bMs
-  })
-
-  if (prevOrders.length !== nextOrders.length) {
-    return nextOrders
-  }
-
-  let changed = false
-  for (let i = 0; i < prevOrders.length; i += 1) {
-    if (prevOrders[i] !== nextOrders[i]) {
-      changed = true
-      break
-    }
-  }
-
-  return changed ? nextOrders : prevOrders
-}
-
-const KitchenOrderCard = memo(function KitchenOrderCard({ order, onOpen, warningRatio }) {
-  const rootRef = useRef(null)
-  const timerRef = useRef(null)
-  const barRef = useRef(null)
-  const stateRef = useRef(null)
-
-  const initialTiming = useMemo(() => getTiming(order, Date.now(), warningRatio), [order, warningRatio])
-
-  useEffect(() => {
-    function applyTiming() {
-      const timing = getTiming(order, Date.now(), warningRatio)
-
-      if (timerRef.current) {
-        timerRef.current.textContent = formatTime(timing.elapsedSeconds)
-      }
-
-      if (barRef.current) {
-        barRef.current.style.width = `${Math.min(timing.progressRatio * 100, 100)}%`
-        barRef.current.className = `tile-bar ${timing.timeState}`
-      }
-
-      if (stateRef.current) {
-        stateRef.current.textContent = timing.timeState === 'overdue' ? 'Просрочен' : 'В работе'
-      }
-
-      if (rootRef.current) {
-        rootRef.current.className =
-          `kitchen-tile ${timing.timeState} ${order.service_mode === 'takeaway' ? 'takeaway' : ''}`
-      }
-    }
-
-    applyTiming()
-    const timer = setInterval(applyTiming, 1000)
-    return () => clearInterval(timer)
-  }, [order, warningRatio])
-
-  return (
-    <div
-      ref={rootRef}
-      className={`kitchen-tile ${initialTiming.timeState} ${order.service_mode === 'takeaway' ? 'takeaway' : ''}`}
-      onClick={() => onOpen(order)}
-    >
-      <div className="tile-top">
-        <div>
-          <div className="tile-label">Заказ</div>
-          <div className="order-number">#{order.number}</div>
-        </div>
-
-        <div className="order-timer-block">
-          <div className="tile-label">Ожидание</div>
-          <div ref={timerRef} className="order-timer">
-            {formatTime(initialTiming.elapsedSeconds)}
-          </div>
-        </div>
-      </div>
-
-      <div className="tile-badges">
-        <div className={`kitchen-badge service ${order.service_mode === 'takeaway' ? 'takeaway' : ''}`}>
-          {order.service_mode === 'takeaway' ? 'С собой' : 'В зале'}
-        </div>
-      </div>
-
-      <div className="tile-bar-wrap">
-        <div
-          ref={barRef}
-          className={`tile-bar ${initialTiming.timeState}`}
-          style={{ width: `${Math.min(initialTiming.progressRatio * 100, 100)}%` }}
-        />
-      </div>
-
-      <div className="tile-meta">
-        <span>Цель: {formatTime(initialTiming.targetPrepSeconds)}</span>
-        <span ref={stateRef}>{initialTiming.timeState === 'overdue' ? 'Просрочен' : 'В работе'}</span>
-      </div>
-
-      <div className="tile-items">
-        {(order.items || []).slice(0, 3).map((item, idx) => (
-          <div key={idx} className="tile-item">
-            <div className="tile-item-main">
-              {item.qty} × {item.display_name || item.name}
-            </div>
-
-            {Array.isArray(item.modifier_lines) && item.modifier_lines.length > 0 && (
-              <div className="tile-item-mods">
-                {item.modifier_lines.map((line, modIdx) => (
-                  <div key={modIdx} className="tile-item-mod">
-                    {line}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-})
-
-
-KitchenOrderCard.propTypes = {
-  order: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    number: PropTypes.string.isRequired,
-    created_at: PropTypes.string,
-    target_prep_seconds: PropTypes.number,
-    service_mode: PropTypes.string,
-    items: PropTypes.arrayOf(PropTypes.shape({
-      item_id: PropTypes.string,
-      name: PropTypes.string,
-      display_name: PropTypes.string,
-      qty: PropTypes.number,
-      modifier_lines: PropTypes.arrayOf(PropTypes.string)
-    }))
-  }).isRequired,
-  onOpen: PropTypes.func.isRequired,
-  warningRatio: PropTypes.number.isRequired
-}
-
-const KitchenSidePanel = memo(function KitchenSidePanel({
-  order,
-  warningRatio,
-  onClose,
-  onReady,
-  onBeginHold,
-  onEndHold
-}) {
-  const elapsedRef = useRef(null)
-  const stateRef = useRef(null)
-
-  const initialTiming = useMemo(() => getTiming(order, Date.now(), warningRatio), [order, warningRatio])
-
-  useEffect(() => {
-    function applyTiming() {
-      const timing = getTiming(order, Date.now(), warningRatio)
-
-      if (elapsedRef.current) {
-        elapsedRef.current.textContent = formatTime(timing.elapsedSeconds)
-      }
-
-      if (stateRef.current) {
-        stateRef.current.textContent =
-          timing.timeState === 'overdue'
-            ? 'Просрочен'
-            : timing.timeState === 'warning'
-            ? 'Скоро просрочка'
-            : 'В норме'
-      }
-    }
-
-    applyTiming()
-    const timer = setInterval(applyTiming, 1000)
-    return () => clearInterval(timer)
-  }, [order, warningRatio])
-
-  return (
-    <div className="kitchen-side-overlay" onClick={onClose}>
-      <aside className="kitchen-side-panel" onClick={(e) => e.stopPropagation()}>
-        <div className="kitchen-side-head">
-          <div>
-            <div className="eyebrow">Подтверждение</div>
-            <div className="kitchen-side-title">Заказ #{order.number}</div>
-            <div className="kitchen-side-subtitle">
-              {order.service_mode === 'takeaway' ? 'Заказ с собой' : 'Заказ в зале'}
-            </div>
-          </div>
-
-          <div className={`kitchen-badge service ${order.service_mode === 'takeaway' ? 'takeaway' : ''}`}>
-            {order.service_mode === 'takeaway' ? 'С собой' : 'В зале'}
-          </div>
-        </div>
-
-        <div className="kitchen-side-scroll">
-          <div className="kitchen-side-block">
-            <div className="kitchen-side-block-title">Тайминг</div>
-
-            <div className="kitchen-side-row">
-              <span>Прошло</span>
-              <b ref={elapsedRef}>{formatTime(initialTiming.elapsedSeconds)}</b>
-            </div>
-
-            <div className="kitchen-side-row" style={{ marginTop: '10px' }}>
-              <span>Норма</span>
-              <b>{formatTime(initialTiming.targetPrepSeconds)}</b>
-            </div>
-
-            <div className="kitchen-side-row" style={{ marginTop: '10px' }}>
-              <span>Статус</span>
-              <b ref={stateRef}>
-                {initialTiming.timeState === 'overdue'
-                  ? 'Просрочен'
-                  : initialTiming.timeState === 'warning'
-                  ? 'Скоро просрочка'
-                  : 'В норме'}
-              </b>
-            </div>
-          </div>
-
-          <div className="kitchen-side-block">
-            <div className="kitchen-side-block-title">Позиции</div>
-
-            <div className="kitchen-side-items">
-              {(order.items || []).map((item, idx) => (
-                <div key={idx} className="kitchen-side-item">
-                  <div className="kitchen-side-item-title">
-                    {item.qty} × {item.display_name || item.name}
-                  </div>
-
-                  {Array.isArray(item.modifier_lines) && item.modifier_lines.length > 0 && (
-                    <div className="kitchen-side-item-mods">
-                      {item.modifier_lines.map((line, modIdx) => (
-                        <div key={modIdx} className="kitchen-side-item-mod">
-                          {line}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="kitchen-side-actions">
-          <button className="action-btn ready" onClick={onReady}>
-            Готово
-          </button>
-
-          <button
-            className="action-btn cancel"
-            onPointerDown={onBeginHold}
-            onPointerUp={onEndHold}
-            onPointerCancel={onEndHold}
-            onPointerLeave={onEndHold}
-          >
-            Удерживать
-          </button>
-
-          <button className="action-btn close" onClick={onClose}>
-            Закрыть
-          </button>
-        </div>
-      </aside>
-    </div>
-  )
-})
-
-
-KitchenSidePanel.propTypes = {
-  order: KitchenOrderCard.propTypes.order,
-  warningRatio: PropTypes.number.isRequired,
-  onClose: PropTypes.func.isRequired,
-  onReady: PropTypes.func.isRequired,
-  onBeginHold: PropTypes.func.isRequired,
-  onEndHold: PropTypes.func.isRequired
-}
+const KITCHEN_BUILD = import.meta.env.VITE_BUILD_MARKER || 'kitchen-prod-final'
 
 export default function KitchenPage() {
-  const [orders, setOrders] = useState([])
+  const { orders, reload } = useKitchenOrders()
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [warningRatio, setWarningRatio] = useState(0.7)
   const [actionPending, setActionPending] = useState(false)
-  const selectedOrderRef = useRef(null)
   const holdTimerRef = useRef(null)
   const holdTriggeredRef = useRef(false)
-  const pollInFlightRef = useRef(false)
 
   useEffect(() => {
-    selectedOrderRef.current = selectedOrder
-  }, [selectedOrder])
-
-  async function load(force = false) {
-    if (pollInFlightRef.current && !force) return
-    try {
-      pollInFlightRef.current = true
-      const data = await getKitchenOrders()
-      const nextRaw = Array.isArray(data) ? data : []
-
-      setOrders(prev => {
-        const merged = mergeOrders(prev, nextRaw)
-
-        if (selectedOrderRef.current) {
-          const freshSelected = merged.find(order => order.id === selectedOrderRef.current.id)
-          if (freshSelected) {
-            setSelectedOrder(freshSelected)
-          } else if (force) {
-            setSelectedOrder(null)
-          }
-        }
-
-        return merged
-      })
-    } catch (e) {
-      console.error(e)
-    } finally {
-      pollInFlightRef.current = false
-    }
-  }
-
-  useEffect(() => {
-    load(true)
     getSettings().then((payload) => {
       const ratio = Number(payload?.effective?.kitchen?.warning_ratio ?? 0.7)
       setWarningRatio(Number.isFinite(ratio) ? Math.min(0.95, Math.max(0.1, ratio)) : 0.7)
@@ -418,14 +22,10 @@ export default function KitchenPage() {
   }, [])
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (!actionPending) {
-        load(false)
-      }
-    }, POLL_MS)
-
-    return () => clearInterval(timer)
-  }, [actionPending])
+    if (!selectedOrder) return
+    const next = orders.find((order) => order.id === selectedOrder.id)
+    if (next) setSelectedOrder(next)
+  }, [orders, selectedOrder])
 
   function clearHold() {
     if (holdTimerRef.current) {
@@ -436,20 +36,15 @@ export default function KitchenPage() {
 
   function beginHold(orderId, e) {
     e.preventDefault()
-    e.stopPropagation()
-
     holdTriggeredRef.current = false
     clearHold()
-
     holdTimerRef.current = setTimeout(async () => {
       holdTriggeredRef.current = true
+      setActionPending(true)
       try {
-        setActionPending(true)
         await markCancel(orderId)
         setSelectedOrder(null)
-        await load(true)
-      } catch (err) {
-        console.error(err)
+        await reload()
       } finally {
         setActionPending(false)
         clearHold()
@@ -459,7 +54,6 @@ export default function KitchenPage() {
 
   function endHold(e) {
     e.preventDefault()
-    e.stopPropagation()
     if (!holdTriggeredRef.current) clearHold()
   }
 
@@ -469,23 +63,14 @@ export default function KitchenPage() {
         <div>
           <div className="eyebrow">JoJo Core · {KITCHEN_BUILD}</div>
           <h1>Кухня</h1>
-          <div className="screen-sub">Активные заказы в работе</div>
+          <div className="screen-sub">Событийное обновление без визуальных перезагрузок</div>
         </div>
-
-        <div className="summary-chip">
-          <span>Заказов</span>
-          <b>{orders.length}</b>
-        </div>
+        <div className="summary-chip"><span>Заказов</span><b>{orders.length}</b></div>
       </div>
 
       <div className="kitchen-grid">
-        {orders.map(order => (
-          <KitchenOrderCard
-            key={order.id}
-            order={order}
-            warningRatio={warningRatio}
-            onOpen={(snapshot) => setSelectedOrder(snapshot)}
-          />
+        {orders.map((order) => (
+          <KitchenOrderCard key={order.id} order={order} warningRatio={warningRatio} onOpen={setSelectedOrder} />
         ))}
       </div>
 
@@ -493,15 +78,14 @@ export default function KitchenPage() {
         <KitchenSidePanel
           order={selectedOrder}
           warningRatio={warningRatio}
-          onClose={() => {
-            setSelectedOrder(null)
-          }}
+          onClose={() => setSelectedOrder(null)}
           onReady={async () => {
+            if (actionPending) return
             setActionPending(true)
             try {
               await markReady(selectedOrder.id)
               setSelectedOrder(null)
-              await load(true)
+              await reload()
             } finally {
               setActionPending(false)
             }

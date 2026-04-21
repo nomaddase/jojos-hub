@@ -7,6 +7,14 @@ async function parse(res) {
   return res.json()
 }
 
+export function getKitchenEventsUrl() {
+  return `${API}/api/events/kitchen`
+}
+
+export function getDisplayEventsUrl() {
+  return `${API}/api/events/display`
+}
+
 export async function getCatalog() {
   return fetch(`${API}/api/catalog`).then(parse)
 }
