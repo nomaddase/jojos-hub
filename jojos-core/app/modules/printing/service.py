@@ -11,7 +11,6 @@ from pydantic import BaseModel, Field
 from app.core.config import LABEL_PRINTER_HOST, LABEL_PRINTER_PORT, LABEL_SIZE_MM
 from app.core.db import get_conn
 from app.modules.orders.service import build_order_response
-from app.modules.settings.service import get_effective_settings
 
 
 class LabelLine(BaseModel):
@@ -87,12 +86,9 @@ def render_label_58x40(payload: LabelPayload) -> str:
 
 
 def _resolve_printer_endpoint() -> tuple[str, int]:
-    settings = get_effective_settings()
-    printer = settings.get("printer") if isinstance(settings.get("printer"), dict) else {}
-
-    host = str(printer.get("label_host") or LABEL_PRINTER_HOST).strip()
-    port = int(printer.get("label_port") or LABEL_PRINTER_PORT)
-    return host, port
+    # Fixed production printer endpoint (network label printer on store LAN).
+    # Keep this deterministic to avoid accidental misrouting from runtime settings.
+    return LABEL_PRINTER_HOST, LABEL_PRINTER_PORT
 
 
 def _insert_job(order_id: str, payload: LabelPayload, rendered_label: str, printer_host: str, printer_port: int) -> str:

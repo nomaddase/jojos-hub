@@ -76,8 +76,14 @@ def seconds_between(dt_from: Optional[str], dt_to: Optional[str]) -> Optional[in
 
 def order_contains_sandwich(items: List[OrderItem]) -> bool:
     for item in items:
-        item_id = item.item_id.lower()
-        item_name = item.name.lower()
+        item_id = getattr(item, "item_id", None)
+        item_name = getattr(item, "name", None)
+        if isinstance(item, dict):
+            item_id = item.get("item_id", item_id)
+            item_name = item.get("name", item_name)
+
+        item_id = str(item_id or "").lower()
+        item_name = str(item_name or "").lower()
         if "sandwich" in item_id or "сэндвич" in item_name:
             return True
     return False
