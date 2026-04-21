@@ -10,3 +10,8 @@ MEDIA_DIR = DATA_DIR / "media"
 CONFIG_DIR = PROJECT_DIR / "config"
 
 READY_VISIBLE_SECONDS = 300
+
+# Production defaults for fixed in-store network printer
+LABEL_PRINTER_HOST = "192.168.0.240"
+LABEL_PRINTER_PORT = 9100
+LABEL_SIZE_MM = (58, 40)

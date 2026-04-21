@@ -22,6 +22,22 @@ def get_catalog():
             if stock is not None and stock["is_available"] is False:
                 continue
 
+            option_groups = []
+            for option_group in item.get("options", []):
+                option_items = []
+                for option_item in option_group.get("items", []):
+                    option_stock = inventory_map.get(option_item["id"]) or inventory_map.get(
+                        f"{item['id']}:{option_group['id']}:{option_item['id']}"
+                    )
+                    if option_stock is not None and option_stock["is_available"] is False:
+                        continue
+                    option_items.append(option_item)
+
+                if option_items:
+                    option_group["items"] = option_items
+                    option_groups.append(option_group)
+            item["options"] = option_groups
+
             item["inventory"] = stock or {
                 "item_id": item["id"],
                 "available_qty": None,

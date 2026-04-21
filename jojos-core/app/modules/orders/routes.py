@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from app.core.db import get_conn
 from app.modules.catalog.service import get_catalog_data
 from app.modules.settings.service import get_effective_settings
+from app.modules.printing.service import create_kitchen_label_job
 from app.modules.orders.service import (
     CreateOrderRequest,
     OrderResponse,
@@ -121,13 +122,24 @@ def create_order(payload: CreateOrderRequest):
             }
             for option in item.options
         ]
+        modifier_lines = []
+        for option in snapshot_options:
+            option_price = int(option.get("price") or 0)
+            if option_price > 0:
+                modifier_lines.append(f"+ {option['name']} (+{option_price} ₸)")
+            else:
+                modifier_lines.append(f"+ {option['name']}")
+
         snapshot_items.append(
             {
                 "item_id": item.item_id,
                 "name": item.name,
+                "display_name": item.name,
                 "qty": item.qty,
                 "base_price": item.price,
                 "options": snapshot_options,
+                "modifier_lines": modifier_lines,
+                "kitchen_text": "\n".join([f"{item.qty} × {item.name}", *modifier_lines]) if modifier_lines else f"{item.qty} × {item.name}",
                 "line_total": (item.price + sum(int(opt["price"] or 0) for opt in snapshot_options)) * item.qty,
             }
         )
@@ -209,7 +221,11 @@ def create_order(payload: CreateOrderRequest):
 
         conn.commit()
 
-    return build_order_response(order_id)
+    result = build_order_response(order_id)
+    auto_print = bool(settings.get("printer", {}).get("auto_print_kitchen_label_on_create", True))
+    if auto_print:
+        result["print_result"] = create_kitchen_label_job(order_id)
+    return result
 
 
 @router.get("/api/orders", response_model=List[OrderResponse])

@@ -22,6 +22,11 @@ RUNTIME_DEFAULTS = {
         "enabled": ["dine_in", "takeaway"],
         "default": "dine_in",
     },
+    "printer": {
+        "label_host": "192.168.0.240",
+        "label_port": 9100,
+        "auto_print_kitchen_label_on_create": True,
+    },
 }
 
 
@@ -98,6 +103,14 @@ def _sanitize_effective_settings(raw_settings: dict) -> dict:
     service_modes["enabled"] = enabled
     service_modes["default"] = default_mode
     result["service_modes"] = service_modes
+
+    printer = result.get("printer") if isinstance(result.get("printer"), dict) else {}
+    printer["label_host"] = str(printer.get("label_host") or RUNTIME_DEFAULTS["printer"]["label_host"]).strip()
+    printer["label_port"] = int(_clamp(float(printer.get("label_port") or RUNTIME_DEFAULTS["printer"]["label_port"]), 1, 65535))
+    printer["auto_print_kitchen_label_on_create"] = bool(
+        printer.get("auto_print_kitchen_label_on_create", RUNTIME_DEFAULTS["printer"]["auto_print_kitchen_label_on_create"])
+    )
+    result["printer"] = printer
 
     return result
 
