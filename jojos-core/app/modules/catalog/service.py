@@ -233,3 +233,8 @@ CATALOG = {
         },
     ]
 }
+
+
+def get_catalog_data():
+    # Central point for future DB/sync-backed catalog loading.
+    return CATALOG

@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from contextlib import closing
 
 from app.core.db import get_conn
+from app.modules.settings.service import get_effective_settings
 from app.modules.sync.service import get_sync_status, list_settings, pull_from_mock_center
 
 router = APIRouter()
@@ -25,7 +26,10 @@ def sync_pull():
 
 @router.get("/api/settings")
 def get_settings():
-    return {"items": list_settings()}
+    return {
+        "items": list_settings(),
+        "effective": get_effective_settings(),
+    }
 
 
 @router.get("/api/analytics/kitchen/daily")
@@ -42,10 +46,20 @@ def kitchen_daily_summary(date: str | None = None):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, number, service_mode, target_prep_seconds, actual_prep_seconds, is_overdue, status, ready_at
+            SELECT
+                id,
+                number,
+                service_mode,
+                target_prep_seconds,
+                actual_prep_seconds,
+                is_overdue,
+                status,
+                created_at,
+                ready_at,
+                cancelled_at
             FROM orders
-            WHERE ready_at >= ? AND ready_at < ?
-            ORDER BY ready_at ASC
+            WHERE created_at >= ? AND created_at < ?
+            ORDER BY created_at ASC
             """,
             (
                 start_dt.isoformat().replace("+00:00", "Z"),
@@ -56,6 +70,7 @@ def kitchen_daily_summary(date: str | None = None):
 
     total = len(rows)
     ready = sum(1 for r in rows if r["status"] == "ready")
+    cancelled = sum(1 for r in rows if r["status"] == "cancelled")
     overdue_count = sum(1 for r in rows if r["is_overdue"])
     prep_values = [r["actual_prep_seconds"] for r in rows if r["actual_prep_seconds"] is not None]
     avg_prep = int(sum(prep_values) / len(prep_values)) if prep_values else 0
@@ -65,6 +80,7 @@ def kitchen_daily_summary(date: str | None = None):
         "summary": {
             "orders_total": total,
             "orders_ready": ready,
+            "orders_cancelled": cancelled,
             "avg_prep_sec": avg_prep,
             "overdue_count": overdue_count,
             "overdue_ratio": (overdue_count / total) if total else 0,
@@ -78,6 +94,9 @@ def kitchen_daily_summary(date: str | None = None):
                 "actual_prep_sec": r["actual_prep_seconds"],
                 "is_overdue": bool(r["is_overdue"]),
                 "status": r["status"],
+                "created_at": r["created_at"],
+                "ready_at": r["ready_at"],
+                "cancelled_at": r["cancelled_at"],
             }
             for r in rows
         ],

@@ -1,4 +1,5 @@
 import uuid
+import json
 from contextlib import closing
 from datetime import datetime, timezone
 from typing import List
@@ -6,7 +7,8 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 
 from app.core.db import get_conn
-from app.modules.catalog.service import CATALOG
+from app.modules.catalog.service import get_catalog_data
+from app.modules.settings.service import get_effective_settings
 from app.modules.orders.service import (
     CreateOrderRequest,
     OrderResponse,
@@ -22,19 +24,17 @@ router = APIRouter()
 
 def build_prep_index():
     result = {}
-    for group in CATALOG["groups"]:
+    for group in get_catalog_data()["groups"]:
         for item in group["items"]:
             result[item["id"]] = int(item.get("prep_seconds") or 120)
     return result
 
 
-PREP_INDEX = build_prep_index()
-
-
 def calculate_order_target_prep_seconds(items) -> int:
+    prep_index = build_prep_index()
     total = 0
     for item in items:
-        prep = PREP_INDEX.get(item.item_id, 120)
+        prep = prep_index.get(item.item_id, 120)
         total += prep * int(item.qty)
     return max(total, 60)
 
@@ -92,6 +92,12 @@ def create_order(payload: CreateOrderRequest):
     order_number = str(100000 + int(datetime.now(timezone.utc).timestamp()) % 900000)
     created_at = utc_now_iso()
 
+    settings = get_effective_settings()
+    enabled_modes = settings.get("service_modes", {}).get("enabled", ["dine_in", "takeaway"])
+    normalized_mode = (payload.service_mode or "dine_in").strip().lower()
+    if normalized_mode not in enabled_modes:
+        raise HTTPException(status_code=400, detail="Unsupported service_mode")
+
     total = 0
     for item in payload.items:
         total += item.qty * item.price
@@ -100,6 +106,40 @@ def create_order(payload: CreateOrderRequest):
 
     contains_sandwich = order_contains_sandwich(payload.items)
     target_prep_seconds = calculate_order_target_prep_seconds(payload.items)
+
+    snapshot_items = []
+    for item in payload.items:
+        snapshot_options = [
+            {
+                "group_id": option.group_id,
+                "option_id": option.option_id,
+                "name": option.name,
+                "price": option.price,
+            }
+            for option in item.options
+        ]
+        snapshot_items.append(
+            {
+                "item_id": item.item_id,
+                "name": item.name,
+                "qty": item.qty,
+                "base_price": item.price,
+                "options": snapshot_options,
+                "line_total": (item.price + sum(int(opt["price"] or 0) for opt in snapshot_options)) * item.qty,
+            }
+        )
+
+    order_snapshot = {
+        "order_id": order_id,
+        "order_number": order_number,
+        "source": payload.source,
+        "service_mode": normalized_mode,
+        "created_at": created_at,
+        "target_prep_seconds": target_prep_seconds,
+        "total": total,
+        "currency": "KZT",
+        "items": snapshot_items,
+    }
 
     with closing(get_conn()) as conn:
         cur = conn.cursor()
@@ -110,8 +150,8 @@ def create_order(payload: CreateOrderRequest):
                 id, number, source, status, created_at, total,
                 accepted_at, ready_at, cancelled_at,
                 target_prep_seconds, contains_sandwich, service_mode,
-                actual_prep_seconds, is_overdue
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                actual_prep_seconds, is_overdue, order_snapshot_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 order_id,
@@ -125,9 +165,10 @@ def create_order(payload: CreateOrderRequest):
                 None,
                 target_prep_seconds,
                 1 if contains_sandwich else 0,
-                payload.service_mode,
+                normalized_mode,
                 None,
                 0,
+                json.dumps(order_snapshot, ensure_ascii=False),
             ),
         )
 

@@ -2,7 +2,7 @@ from copy import deepcopy
 
 from fastapi import APIRouter
 
-from app.modules.catalog.service import CATALOG
+from app.modules.catalog.service import get_catalog_data
 from app.modules.inventory.service import get_inventory_map
 
 router = APIRouter()
@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get("/api/catalog")
 def get_catalog():
-    data = deepcopy(CATALOG)
+    data = deepcopy(get_catalog_data())
     inventory_map = get_inventory_map()
 
     filtered_groups = []

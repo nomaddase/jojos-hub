@@ -347,15 +347,24 @@ export default function KitchenPage() {
   }, [selectedOrder])
 
   async function load(force = false) {
-    if (!force && selectedOrderRef.current) {
-      return
-    }
-
     try {
       const data = await getKitchenOrders()
       const nextRaw = Array.isArray(data) ? data : []
 
-      setOrders(prev => mergeOrders(prev, nextRaw))
+      setOrders(prev => {
+        const merged = mergeOrders(prev, nextRaw)
+
+        if (selectedOrderRef.current) {
+          const freshSelected = merged.find(order => order.id === selectedOrderRef.current.id)
+          if (freshSelected) {
+            setSelectedOrder(freshSelected)
+          } else if (force) {
+            setSelectedOrder(null)
+          }
+        }
+
+        return merged
+      })
     } catch (e) {
       console.error(e)
     }
