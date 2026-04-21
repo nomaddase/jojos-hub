@@ -1,8 +1,18 @@
-# React + Vite
+# Jojo's UI (React + Vite)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+UI for kiosk, kitchen, and display surfaces. This app intentionally stays with a lean stack:
 
-Currently, two official plugins are available:
+- React (JSX) + CSS for production-specific interfaces
+- No heavy generic UI frameworks (for example Material UI or Ant Design)
+- Small focused libraries are allowed only when they clearly improve UX
+  - animations/transitions: `framer-motion`
+  - icons: `lucide-react`
+  - lightweight primitives: only if truly required
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Why this approach
+
+The local core service is not the primary bottleneck. We optimize for client stability and responsiveness on kiosk/WebView devices by:
+
+- keeping bundles small
+- minimizing runtime complexity
+- favoring custom task-focused interfaces over generic business UI kits
