@@ -388,6 +388,9 @@ export default function KsoPage() {
   }
 
   const cartTotal = cart.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0)
+  const etaText = orderEta
+    ? `Примерное время готовности: ${formatEta(orderEta.eta_seconds)}`
+    : `Текущее ожидание: ${formatEta(currentEta?.queue_remaining_seconds || 0)}`
 
   if (!started) {
     return (
@@ -523,7 +526,7 @@ export default function KsoPage() {
 
         <main className="kso-content">
           <div className="kso-wait-strip">
-            Текущее ожидание: {formatEta(currentEta?.queue_remaining_seconds || 0)}
+            {etaText}
           </div>
 
           {loading && <div className="kso-empty">Загрузка каталога…</div>}
@@ -574,38 +577,6 @@ export default function KsoPage() {
             </section>
           ))}
 
-          {upsellItems.length > 0 && (
-            <section className="kso-section">
-              <div className="kso-section-head">
-                <div>
-                  <h2>Добавить к заказу</h2>
-                  <p>Быстрые рекомендации</p>
-                </div>
-                <div className="kso-section-count">{upsellItems.length}</div>
-              </div>
-
-              <div className="kso-product-grid">
-                {upsellItems.map(item => (
-                  <article className="kso-product-card compact" key={item.id}>
-                    <div className="kso-product-image">JOJO’S</div>
-                    <div className="kso-product-body">
-                      <div className="kso-product-name">{item.name}</div>
-                      <div className="kso-product-description">{item.description}</div>
-                      <div className="kso-product-footer">
-                        <div>
-                          <div className="kso-product-price">{formatPrice(item.price)}</div>
-                          <div className="kso-product-prep">~ {formatEta(item.prep_seconds || 0)}</div>
-                        </div>
-                        <button className="kso-select-btn" onClick={() => addSimpleItemToCart(item)}>
-                          Добавить
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
         </main>
       </div>
 
@@ -616,14 +587,12 @@ export default function KsoPage() {
         </div>
 
         <div className="kso-bottom-extra">
-          {orderEta
-            ? `Примерное время готовности: ${formatEta(orderEta.eta_seconds)}`
-            : `Текущее ожидание: ${formatEta(currentEta?.queue_remaining_seconds || 0)}`}
+          {etaText}
         </div>
 
         <div className="kso-bottom-actions">
           <button className="kso-secondary-btn" onClick={resetKsoState}>Сбросить</button>
-          <button className="kso-primary-btn" onClick={() => setCheckoutOpen(true)}>
+          <button className="kso-primary-btn" onClick={() => setCheckoutOpen(true)} disabled={cart.length === 0}>
             Оформить заказ
           </button>
         </div>
@@ -786,9 +755,7 @@ export default function KsoPage() {
               </div>
 
               <div className="kso-drawer-eta">
-                {orderEta
-                  ? `Примерно будет готов через ${formatEta(orderEta.eta_seconds)}`
-                  : `Текущее ожидание: ${formatEta(currentEta?.queue_remaining_seconds || 0)}`}
+                {etaText}
               </div>
 
               <button
