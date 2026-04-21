@@ -95,6 +95,7 @@ button {
 .kso-primary-cta {
   margin-top: 34px;
   min-width: 360px;
+  align-self: center;
   height: 98px;
   padding: 0 34px;
   border-radius: 24px;
@@ -586,7 +587,9 @@ button {
 }
 
 .display-page-indicator {
-  margin-top: 10px;
+  position: fixed;
+  right: 24px;
+  bottom: 12px;
   text-align: right;
   font-size: 14px;
   font-weight: 800;
@@ -711,14 +714,19 @@ button {
   padding: 24px;
 }
 
-.kso-landing-card,
+ .kso-landing-card,
 .kso-mode-card {
   width: min(980px, 94vw);
+  max-width: 980px;
   border-radius: 36px;
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid #eee6dd;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.10);
   padding: 42px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  row-gap: 4px;
 }
 
 .kso-landing-logo {
@@ -800,6 +808,7 @@ button {
 }
 
 .kso-mode-top {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 22px;
@@ -812,6 +821,7 @@ button {
 }
 
 .kso-mode-grid {
+  width: 100%;
   margin-top: 30px;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -850,6 +860,7 @@ button {
 }
 
 .kso-mode-actions {
+  width: 100%;
   margin-top: 24px;
   display: flex;
   justify-content: center;

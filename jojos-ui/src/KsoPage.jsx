@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createOrder, getCatalog, getCurrentEta, getSettings, previewEta } from './api'
 import { buildEffectiveRuntimeSettings, getRuntimeDefaults } from './runtimeSettings'
+import { formatEta, formatPrice, getLabel } from './kso/ksoUtils'
 
 const runtimeDefaults = getRuntimeDefaults()
 const DEFAULT_IDLE_TIMEOUT_MS = runtimeDefaults.idleTimeoutSeconds * 1000
@@ -8,23 +9,6 @@ const DEFAULT_LANGUAGES = runtimeDefaults.languages
 const DEFAULT_SERVICE_MODES = runtimeDefaults.serviceModes.enabled
 
 
-function formatPrice(value) {
-  return `${Number(value || 0).toLocaleString('ru-RU')} ₸`
-}
-
-function formatEta(seconds = 0) {
-  if (!seconds || seconds <= 0) return 'без очереди'
-  const min = Math.max(1, Math.ceil(seconds / 60))
-  return `≈ ${min} мин`
-}
-
-function getLabel(lang) {
-  const key = String(lang || '').toLowerCase()
-  if (key === 'ru') return 'RU'
-  if (key === 'kz' || key === 'kaz') return 'KAZ'
-  if (key === 'en') return 'EN'
-  return String(lang).toUpperCase()
-}
 
 export default function KsoPage() {
   const [catalog, setCatalog] = useState({ groups: [] })
