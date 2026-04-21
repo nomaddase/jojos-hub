@@ -1,20 +1,16 @@
-import json
-import socket
 import uuid
 from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from app.core.config import LABEL_PRINTER_HOST, LABEL_PRINTER_PORT, LABEL_SIZE_MM
+from app.core.config import LABEL_PRINTER_HOST, LABEL_PRINTER_PORT
 from app.core.db import get_conn
 from app.modules.orders.service import build_order_response
-
-
-class LabelLine(BaseModel):
-    text: str = Field(min_length=1, max_length=120)
+from app.modules.printing.label_template_58x40 import render_kitchen_label_58x40_text
+from app.modules.printing.printer_adapters import PrinterAdapter, RawTcpTextAdapter
 
 
 class LabelPayload(BaseModel):
@@ -24,47 +20,13 @@ class LabelPayload(BaseModel):
     created_at: str
     target_prep_seconds: int
     items: list[dict[str, Any]]
-    lines: list[LabelLine]
-
-
-class PrinterAdapter:
-    def send(self, rendered_label: str, host: str, port: int) -> None:
-        raise NotImplementedError
-
-
-class RawTcpPrinterAdapter(PrinterAdapter):
-    def send(self, rendered_label: str, host: str, port: int) -> None:
-        data = rendered_label.encode("utf-8", errors="replace")
-        with socket.create_connection((host, port), timeout=4.0) as sock:
-            sock.sendall(data)
 
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def format_service_mode(service_mode: str) -> str:
-    return "TAKEAWAY" if service_mode == "takeaway" else "DINE IN"
-
-
 def build_label_payload(order: dict) -> LabelPayload:
-    lines: list[LabelLine] = [
-        LabelLine(text="=" * 24),
-        LabelLine(text=f"JOJO'S 58x40 LABEL"),
-        LabelLine(text=f"ORDER #{order['number']}"),
-        LabelLine(text=f"MODE: {format_service_mode(order.get('service_mode') or 'dine_in')}"),
-        LabelLine(text=f"CREATED: {order['created_at'][:19].replace('T', ' ')}"),
-        LabelLine(text=f"TARGET: {int(order.get('target_prep_seconds') or 0) // 60} min"),
-        LabelLine(text="-" * 24),
-    ]
-
-    for item in order.get("items", []):
-        lines.append(LabelLine(text=f"{item.get('qty', 1)}x {item.get('display_name') or item.get('name') or 'Item'}"))
-        for mod in item.get("modifier_lines", []):
-            lines.append(LabelLine(text=f"  {mod}"[:42]))
-
-    lines.extend([LabelLine(text="-" * 24), LabelLine(text="KITCHEN COPY"), LabelLine(text="\n\n")])
-
     return LabelPayload(
         order_id=order["id"],
         order_number=order["number"],
@@ -72,17 +34,11 @@ def build_label_payload(order: dict) -> LabelPayload:
         created_at=order["created_at"],
         target_prep_seconds=int(order.get("target_prep_seconds") or 0),
         items=order.get("items", []),
-        lines=lines,
     )
 
 
 def render_label_58x40(payload: LabelPayload) -> str:
-    # Generic plain-text rendering over raw TCP (9100).
-    # Adapter boundary allows swapping to ZPL/TSPL/EPL without business-logic changes.
-    content = "\n".join(line.text for line in payload.lines)
-    width_mm, height_mm = LABEL_SIZE_MM
-    header = f"#SIZE:{width_mm}x{height_mm}mm\n"
-    return f"{header}{content}\n"
+    return render_kitchen_label_58x40_text(payload.model_dump())
 
 
 def _resolve_printer_endpoint() -> tuple[str, int]:
@@ -143,7 +99,7 @@ def create_kitchen_label_job(order_id: str, adapter: PrinterAdapter | None = Non
 
     job_id = _insert_job(order_id, payload, rendered, host, port)
 
-    active_adapter = adapter or RawTcpPrinterAdapter()
+    active_adapter = adapter or RawTcpTextAdapter()
     attempts = 1
     try:
         active_adapter.send(rendered, host=host, port=port)

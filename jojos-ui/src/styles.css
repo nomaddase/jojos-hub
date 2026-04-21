@@ -120,10 +120,10 @@ button {
 }
 
 .kso-select-btn {
-  height: 40px;
-  padding: 0 14px;
+  min-height: 52px;
+  padding: 0 18px;
   border-radius: 14px;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .kso-remove-btn {
@@ -220,7 +220,6 @@ button {
 .kitchen-tile.overdue {
   border-color: #ef4444;
   background: linear-gradient(180deg, #fff4f5, #ffeef0);
-  animation: blink 1s infinite;
 }
 
 .kitchen-tile.takeaway {
@@ -566,21 +565,14 @@ button {
 .display-order-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--display-grid-rows, 3), minmax(0, 1fr));
   gap: 16px;
-  align-content: start;
+  align-content: stretch;
   overflow: hidden;
 }
 
-.display-order-grid.cozy {
+.display-order-grid.cols-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.display-order-grid.dense {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.display-order-grid.ultra {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .display-order-grid.ultra .display-order-card {
@@ -602,7 +594,8 @@ button {
 }
 
 .display-order-card {
-  min-height: 150px;
+  min-height: 0;
+  height: 100%;
   border-radius: 26px;
   padding: 18px;
   display: grid;
@@ -826,7 +819,7 @@ button {
 }
 
 .kso-mode-option {
-  min-height: 220px;
+  min-height: 250px;
   border: 0;
   border-radius: 28px;
   background: linear-gradient(135deg, #fff3f4, #fff);
@@ -950,7 +943,7 @@ button {
 }
 
 .kso-group-btn {
-  height: 54px;
+  min-height: 64px;
   border-radius: 16px;
   border: 0;
   background: transparent;
@@ -1220,7 +1213,7 @@ button {
 }
 
 .kso-option-chip {
-  min-height: 72px;
+  min-height: 90px;
   border-radius: 18px;
   border: 1px solid #e6dfd6;
   background: #fff;
@@ -1867,9 +1860,9 @@ button {
 }
 
 .kso-bottom-extra {
-  font-size: 15px;
-  font-weight: 800;
-  color: #fca5a5;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f9c6ca;
 }
 
 .kso-config-eta {
@@ -1881,6 +1874,6 @@ button {
 
 .kso-drawer-eta {
   font-size: 16px;
-  font-weight: 800;
-  color: #b4232e;
+  font-weight: 700;
+  color: #374151;
 }

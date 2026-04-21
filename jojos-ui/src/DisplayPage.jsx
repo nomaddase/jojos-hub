@@ -29,10 +29,10 @@ function chunkOrders(orders, perPage) {
   return pages
 }
 
-function getAdaptiveGridClass(totalCount) {
-  if (totalCount <= 6) return 'cozy'
-  if (totalCount <= 12) return 'dense'
-  return 'ultra'
+function getGridConfig(totalCount) {
+  if (totalCount <= 8) return { cols: 2, rows: 2, density: 'cozy' }
+  if (totalCount <= 18) return { cols: 3, rows: 3, density: 'dense' }
+  return { cols: 3, rows: 4, density: 'ultra' }
 }
 
 export default function DisplayPage() {
@@ -62,8 +62,8 @@ export default function DisplayPage() {
   }, [])
 
   const totalCards = data.accepted_orders.length + data.ready_orders.length
-  const densityClass = getAdaptiveGridClass(totalCards)
-  const cardsPerZonePage = densityClass === 'cozy' ? 6 : densityClass === 'dense' ? 12 : 18
+  const gridConfig = getGridConfig(totalCards)
+  const cardsPerZonePage = gridConfig.cols * gridConfig.rows
 
   const acceptedPages = useMemo(
     () => chunkOrders(data.accepted_orders, cardsPerZonePage),
@@ -110,7 +110,10 @@ export default function DisplayPage() {
         {acceptedVisible.length === 0 ? (
           <div className="display-zone-empty">Нет активных принятых заказов</div>
         ) : (
-          <div className={`display-order-grid ${densityClass}`}>
+          <div
+            className={`display-order-grid ${gridConfig.density} cols-${gridConfig.cols}`}
+            style={{ '--display-grid-rows': gridConfig.rows }}
+          >
             {acceptedVisible.map(order => (
               <div className="display-order-card accepted" key={order.id}>
                 <div className="display-order-number">#{order.number}</div>
@@ -133,7 +136,10 @@ export default function DisplayPage() {
         {readyVisible.length === 0 ? (
           <div className="display-zone-empty ready">Готовых заказов пока нет</div>
         ) : (
-          <div className={`display-order-grid ${densityClass}`}>
+          <div
+            className={`display-order-grid ${gridConfig.density} cols-${gridConfig.cols}`}
+            style={{ '--display-grid-rows': gridConfig.rows }}
+          >
             {readyVisible.map(order => (
               <div className="display-order-card ready" key={order.id}>
                 <div className="display-order-number">#{order.number}</div>

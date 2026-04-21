@@ -371,16 +371,20 @@ export default function KitchenPage() {
   const [orders, setOrders] = useState([])
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [warningRatio, setWarningRatio] = useState(0.7)
+  const [actionPending, setActionPending] = useState(false)
   const selectedOrderRef = useRef(null)
   const holdTimerRef = useRef(null)
   const holdTriggeredRef = useRef(false)
+  const pollInFlightRef = useRef(false)
 
   useEffect(() => {
     selectedOrderRef.current = selectedOrder
   }, [selectedOrder])
 
   async function load(force = false) {
+    if (pollInFlightRef.current && !force) return
     try {
+      pollInFlightRef.current = true
       const data = await getKitchenOrders()
       const nextRaw = Array.isArray(data) ? data : []
 
@@ -400,6 +404,8 @@ export default function KitchenPage() {
       })
     } catch (e) {
       console.error(e)
+    } finally {
+      pollInFlightRef.current = false
     }
   }
 
@@ -413,11 +419,13 @@ export default function KitchenPage() {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      load(false)
+      if (!actionPending) {
+        load(false)
+      }
     }, POLL_MS)
 
     return () => clearInterval(timer)
-  }, [])
+  }, [actionPending])
 
   function clearHold() {
     if (holdTimerRef.current) {
@@ -436,12 +444,14 @@ export default function KitchenPage() {
     holdTimerRef.current = setTimeout(async () => {
       holdTriggeredRef.current = true
       try {
+        setActionPending(true)
         await markCancel(orderId)
         setSelectedOrder(null)
         await load(true)
       } catch (err) {
         console.error(err)
       } finally {
+        setActionPending(false)
         clearHold()
       }
     }, 900)
@@ -483,14 +493,18 @@ export default function KitchenPage() {
         <KitchenSidePanel
           order={selectedOrder}
           warningRatio={warningRatio}
-          onClose={async () => {
+          onClose={() => {
             setSelectedOrder(null)
-            await load(true)
           }}
           onReady={async () => {
-            await markReady(selectedOrder.id)
-            setSelectedOrder(null)
-            await load(true)
+            setActionPending(true)
+            try {
+              await markReady(selectedOrder.id)
+              setSelectedOrder(null)
+              await load(true)
+            } finally {
+              setActionPending(false)
+            }
           }}
           onBeginHold={(e) => beginHold(selectedOrder.id, e)}
           onEndHold={endHold}
