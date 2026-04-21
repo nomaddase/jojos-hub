@@ -2,14 +2,16 @@ from contextlib import closing
 
 from fastapi import APIRouter
 
-from app.core.config import READY_VISIBLE_SECONDS
 from app.core.db import get_conn
 from app.modules.orders.service import seconds_since
+from app.modules.settings.service import get_setting_value
 
 router = APIRouter()
 
 
 def build_display_payload():
+    ready_visible_seconds = int(get_setting_value("display.ready_visibility_seconds", 300))
+
     with closing(get_conn()) as conn:
         cur = conn.cursor()
 
@@ -38,7 +40,7 @@ def build_display_payload():
     ready_orders = []
     for row in ready_rows:
         visible_for = seconds_since(row["ready_at"])
-        if visible_for is None or visible_for > READY_VISIBLE_SECONDS:
+        if visible_for is None or visible_for > ready_visible_seconds:
             continue
 
         ready_orders.append(
@@ -53,6 +55,7 @@ def build_display_payload():
     return {
         "accepted_orders": accepted_orders,
         "ready_orders": ready_orders,
+        "ready_visibility_seconds": ready_visible_seconds,
     }
 
 

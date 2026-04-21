@@ -593,6 +593,12 @@ button {
   box-shadow: 0 16px 34px rgba(217, 45, 58, 0.22);
 }
 
+.display-order-card.overflow {
+  background: #eef2f7;
+  border: 1px dashed #c5d0de;
+  color: #334155;
+}
+
 .display-order-number {
   font-size: 52px;
   line-height: 1;
@@ -1190,7 +1196,7 @@ button {
   text-align: left;
   padding: 12px 14px;
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: minmax(32px, auto) 20px;
   align-content: space-between;
 }
 
@@ -1211,6 +1217,7 @@ button {
   font-size: 13px;
   font-weight: 800;
   color: #6b7280;
+  min-height: 18px;
 }
 
 .kso-option-chip.selected .kso-option-chip-price {

@@ -106,6 +106,7 @@ def init_db():
             ("service_mode", "TEXT DEFAULT 'dine_in'"),
             ("actual_prep_seconds", "INTEGER"),
             ("is_overdue", "INTEGER NOT NULL DEFAULT 0"),
+            ("order_snapshot_json", "TEXT"),
         ]
 
         for col_name, col_type in order_needed_columns:

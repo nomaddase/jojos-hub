@@ -44,6 +44,7 @@ class OrderResponse(BaseModel):
     service_mode: str
     actual_prep_seconds: Optional[int] = None
     is_overdue: bool
+    order_snapshot: Optional[dict] = None
     items: List[dict]
 
 
@@ -162,6 +163,7 @@ def build_order_response(order_id: str) -> dict:
             "service_mode": order["service_mode"] or "dine_in",
             "actual_prep_seconds": order["actual_prep_seconds"],
             "is_overdue": bool(order["is_overdue"]),
+            "order_snapshot": _parse_json(order["order_snapshot_json"]),
             "items": items,
         }
 
@@ -182,3 +184,14 @@ def mark_in_progress_if_created(order_id: str):
                 ("in_progress", accepted_at, order_id),
             )
             conn.commit()
+
+
+def _parse_json(raw: Optional[str]):
+    if not raw:
+        return None
+    try:
+        import json
+
+        return json.loads(raw)
+    except Exception:
+        return None

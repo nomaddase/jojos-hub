@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createOrder, getCatalog, getCurrentEta, getSettings, previewEta } from './api'
 
-const IDLE_TIMEOUT_MS = 30000
+const DEFAULT_IDLE_TIMEOUT_MS = 30000
 const DEFAULT_LANGUAGES = ['ru', 'kz', 'en']
+const DEFAULT_SERVICE_MODES = ['dine_in', 'takeaway']
 
 function formatPrice(value) {
   return `${Number(value || 0).toLocaleString('ru-RU')} ₸`
@@ -23,19 +24,10 @@ function getLabel(lang) {
 }
 
 function parseLanguages(settingsPayload) {
-  const items = settingsPayload?.items || []
-  const row = items.find(x => x.key === 'setting:languages')
-  if (!row?.value) return DEFAULT_LANGUAGES
-
-  try {
-    const parsed = JSON.parse(row.value)
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed.map(x => String(x).toLowerCase())
-    }
-  } catch (e) {
-    console.error(e)
+  const fromEffective = settingsPayload?.effective?.languages
+  if (Array.isArray(fromEffective) && fromEffective.length > 0) {
+    return fromEffective.map(x => String(x).toLowerCase())
   }
-
   return DEFAULT_LANGUAGES
 }
 
@@ -43,6 +35,8 @@ export default function KsoPage() {
   const [catalog, setCatalog] = useState({ groups: [] })
   const [languages, setLanguages] = useState(DEFAULT_LANGUAGES)
   const [currentLanguage, setCurrentLanguage] = useState('ru')
+  const [idleTimeoutMs, setIdleTimeoutMs] = useState(DEFAULT_IDLE_TIMEOUT_MS)
+  const [serviceModes, setServiceModes] = useState(DEFAULT_SERVICE_MODES)
 
   const [activeGroup, setActiveGroup] = useState('all')
   const [selectedItem, setSelectedItem] = useState(null)
@@ -75,8 +69,18 @@ export default function KsoPage() {
 
         const langs = parseLanguages(settingsData)
         setLanguages(langs)
+        const defaultLanguage = settingsData?.effective?.default_language
+        const enabledModes = settingsData?.effective?.service_modes?.enabled
+        const idleTimeoutSec = Number(settingsData?.effective?.idle_timeout_seconds || 30)
 
-        if (!langs.includes(currentLanguage)) {
+        if (Array.isArray(enabledModes) && enabledModes.length > 0) {
+          setServiceModes(enabledModes.map(x => String(x).toLowerCase()))
+        }
+        setIdleTimeoutMs(Math.max(10_000, idleTimeoutSec * 1000))
+
+        if (defaultLanguage && langs.includes(String(defaultLanguage).toLowerCase())) {
+          setCurrentLanguage(String(defaultLanguage).toLowerCase())
+        } else if (!langs.includes(currentLanguage)) {
           setCurrentLanguage(langs[0] || 'ru')
         }
 
@@ -154,7 +158,7 @@ export default function KsoPage() {
 
     idleTimerRef.current = setTimeout(() => {
       resetKsoState()
-    }, IDLE_TIMEOUT_MS)
+    }, idleTimeoutMs)
   }
 
   useEffect(() => {
@@ -162,7 +166,7 @@ export default function KsoPage() {
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
-  }, [started, selectedItem, checkoutOpen, success, cart, serviceMode])
+  }, [started, selectedItem, checkoutOpen, success, cart, serviceMode, idleTimeoutMs])
 
   useEffect(() => {
     function onAnyActivity() {
@@ -448,15 +452,19 @@ export default function KsoPage() {
           </div>
 
           <div className="kso-mode-grid">
-            <button className="kso-mode-option" onClick={() => setServiceMode('dine_in')}>
-              <div className="kso-mode-option-title">В зале</div>
-              <div className="kso-mode-option-subtitle">Подача для гостей внутри заведения</div>
-            </button>
+            {serviceModes.includes('dine_in') && (
+              <button className="kso-mode-option" onClick={() => setServiceMode('dine_in')}>
+                <div className="kso-mode-option-title">В зале</div>
+                <div className="kso-mode-option-subtitle">Подача для гостей внутри заведения</div>
+              </button>
+            )}
 
-            <button className="kso-mode-option takeaway" onClick={() => setServiceMode('takeaway')}>
-              <div className="kso-mode-option-title">С собой</div>
-              <div className="kso-mode-option-subtitle">Упакуем заказ для выдачи на вынос</div>
-            </button>
+            {serviceModes.includes('takeaway') && (
+              <button className="kso-mode-option takeaway" onClick={() => setServiceMode('takeaway')}>
+                <div className="kso-mode-option-title">С собой</div>
+                <div className="kso-mode-option-subtitle">Упакуем заказ для выдачи на вынос</div>
+              </button>
+            )}
           </div>
 
           <div className="kso-mode-actions">
