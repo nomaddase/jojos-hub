@@ -37,6 +37,21 @@ export function KitchenOrderCard({ order, warningRatio, onOpen }) {
         <span>Цель: {formatTimer(timing.targetPrepSeconds)}</span>
         <span>{timing.timeState === 'overdue' ? 'Просрочен' : 'В работе'}</span>
       </div>
+
+      <div className="tile-items">
+        {(order.items || []).slice(0, 3).map((item, idx) => (
+          <div key={`${item.item_id || item.name}-${idx}`} className="tile-item">
+            <div className="tile-item-main">{item.qty} × {item.display_name || item.name}</div>
+            {(item.modifier_lines || []).length > 0 && (
+              <div className="tile-item-mods">
+                {(item.modifier_lines || []).map((mod, modIdx) => (
+                  <div key={`${idx}-mod-${modIdx}`} className="tile-item-mod">{mod}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

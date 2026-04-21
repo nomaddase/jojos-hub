@@ -8,7 +8,7 @@ from app.core.db import get_conn
 RUNTIME_DEFAULTS = {
     "languages": ["ru", "kz", "en"],
     "default_language": "ru",
-    "idle_timeout_seconds": 30,
+    "idle_timeout_seconds": 15,
     "branding": {
         "name": "JoJo’s",
     },

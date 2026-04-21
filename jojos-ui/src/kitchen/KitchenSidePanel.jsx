@@ -20,9 +20,29 @@ export function KitchenSidePanel({ order, warningRatio, onClose, onReady, onBegi
           </div>
         </div>
         <div className="kitchen-side-scroll">
-          <div className="kitchen-side-row"><span>Прошло</span><b>{formatTimer(timing.elapsedSeconds)}</b></div>
-          <div className="kitchen-side-row"><span>Норма</span><b>{formatTimer(timing.targetPrepSeconds)}</b></div>
-          <div className="kitchen-side-row"><span>Статус</span><b>{timing.timeState}</b></div>
+          <div className="kitchen-side-block">
+            <div className="kitchen-side-row"><span>Прошло</span><b>{formatTimer(timing.elapsedSeconds)}</b></div>
+            <div className="kitchen-side-row"><span>Норма</span><b>{formatTimer(timing.targetPrepSeconds)}</b></div>
+            <div className="kitchen-side-row"><span>Статус</span><b>{timing.timeState}</b></div>
+          </div>
+
+          <div className="kitchen-side-block">
+            <div className="kitchen-side-block-title">Состав заказа</div>
+            <div className="kitchen-side-items">
+              {(order.items || []).map((item, idx) => (
+                <div className="kitchen-side-item" key={`${item.item_id || item.name}-${idx}`}>
+                  <div className="kitchen-side-item-title">{item.qty} × {item.display_name || item.name}</div>
+                  {(item.modifier_lines || []).length > 0 && (
+                    <div className="kitchen-side-item-mods">
+                      {(item.modifier_lines || []).map((mod, modIdx) => (
+                        <div className="kitchen-side-item-mod" key={`${idx}-mod-${modIdx}`}>{mod}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="kitchen-side-actions">
           <button className="action-btn ready" onClick={onReady}>Готово</button>
