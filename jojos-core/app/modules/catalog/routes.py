@@ -19,7 +19,7 @@ def get_catalog():
 
         for item in group["items"]:
             stock = inventory_map.get(item["id"])
-            if stock is not None and stock["is_available"] is False:
+            if stock is not None and (stock["is_available"] is False or int(stock.get("available_qty") or 0) == 0):
                 continue
 
             option_groups = []
@@ -29,7 +29,9 @@ def get_catalog():
                     option_stock = inventory_map.get(option_item["id"]) or inventory_map.get(
                         f"{item['id']}:{option_group['id']}:{option_item['id']}"
                     )
-                    if option_stock is not None and option_stock["is_available"] is False:
+                    if option_stock is not None and (
+                        option_stock["is_available"] is False or int(option_stock.get("available_qty") or 0) == 0
+                    ):
                         continue
                     option_items.append(option_item)
 
