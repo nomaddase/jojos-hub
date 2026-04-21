@@ -28,6 +28,29 @@ export default [
       ...react.configs.recommended.rules,
       ...react.configs['jsx-runtime'].rules,
       ...reactHooks.configs.recommended.rules,
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@mui/material',
+              message:
+                'Use custom kiosk-first components and CSS instead of Material UI.',
+            },
+            {
+              name: '@mui/icons-material',
+              message:
+                'Prefer lucide-react or project-specific icons to keep bundle size low.',
+            },
+            {
+              name: 'antd',
+              message:
+                'Use lightweight primitives or custom components instead of Ant Design.',
+            },
+          ],
+          patterns: ['@mui/*', 'antd/*'],
+        },
+      ],
       'react/jsx-no-target-blank': 'off',
       'react-refresh/only-export-components': [
         'warn',
