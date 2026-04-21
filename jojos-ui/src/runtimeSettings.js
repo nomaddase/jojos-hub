@@ -1,7 +1,7 @@
 const RUNTIME_DEFAULTS = {
   languages: ['ru', 'kz', 'en'],
   defaultLanguage: 'ru',
-  idleTimeoutSeconds: 30,
+  idleTimeoutSeconds: 15,
   kitchenWarningRatio: 0.7,
   displayReadyVisibilitySeconds: 300,
   serviceModes: {

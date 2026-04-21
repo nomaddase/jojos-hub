@@ -1,13 +1,17 @@
 import { useEffect, useRef } from 'react'
 
-export function useEventStream({ url, eventName, onMessage, onError }) {
+export function useEventStream({ url, eventName, onMessage, onError, onHeartbeat, onOpen }) {
   const onMessageRef = useRef(onMessage)
   const onErrorRef = useRef(onError)
+  const onHeartbeatRef = useRef(onHeartbeat)
+  const onOpenRef = useRef(onOpen)
 
   useEffect(() => {
     onMessageRef.current = onMessage
     onErrorRef.current = onError
-  }, [onError, onMessage])
+    onHeartbeatRef.current = onHeartbeat
+    onOpenRef.current = onOpen
+  }, [onError, onHeartbeat, onMessage, onOpen])
 
   useEffect(() => {
     if (!url) return undefined
@@ -21,15 +25,21 @@ export function useEventStream({ url, eventName, onMessage, onError }) {
         console.error(e)
       }
     }
+    const heartbeatListener = () => onHeartbeatRef.current?.()
+    const openListener = () => onOpenRef.current?.()
 
     source.addEventListener(eventName, listener)
+    source.addEventListener('heartbeat', heartbeatListener)
+    source.addEventListener('open', openListener)
+    source.onopen = openListener
     source.onerror = (error) => {
       onErrorRef.current?.(error)
-      source.close()
     }
 
     return () => {
       source.removeEventListener(eventName, listener)
+      source.removeEventListener('heartbeat', heartbeatListener)
+      source.removeEventListener('open', openListener)
       source.close()
     }
   }, [eventName, url])
