@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createOrder, getCatalog, getCurrentEta, getSettings, previewEta } from './api'
+import { buildEffectiveRuntimeSettings, getRuntimeDefaults } from './runtimeSettings'
 
-const DEFAULT_IDLE_TIMEOUT_MS = 30000
-const DEFAULT_LANGUAGES = ['ru', 'kz', 'en']
-const DEFAULT_SERVICE_MODES = ['dine_in', 'takeaway']
+const runtimeDefaults = getRuntimeDefaults()
+const DEFAULT_IDLE_TIMEOUT_MS = runtimeDefaults.idleTimeoutSeconds * 1000
+const DEFAULT_LANGUAGES = runtimeDefaults.languages
+const DEFAULT_SERVICE_MODES = runtimeDefaults.serviceModes.enabled
+
 
 function formatPrice(value) {
   return `${Number(value || 0).toLocaleString('ru-RU')} ₸`
@@ -21,14 +24,6 @@ function getLabel(lang) {
   if (key === 'kz' || key === 'kaz') return 'KAZ'
   if (key === 'en') return 'EN'
   return String(lang).toUpperCase()
-}
-
-function parseLanguages(settingsPayload) {
-  const fromEffective = settingsPayload?.effective?.languages
-  if (Array.isArray(fromEffective) && fromEffective.length > 0) {
-    return fromEffective.map(x => String(x).toLowerCase())
-  }
-  return DEFAULT_LANGUAGES
 }
 
 export default function KsoPage() {
@@ -56,43 +51,67 @@ export default function KsoPage() {
 
   const idleTimerRef = useRef(null)
 
+  const visibleGroups = useMemo(() => catalog.groups || [], [catalog.groups])
+
+  const resetKsoState = useCallback(() => {
+    setActiveGroup('all')
+    setSelectedItem(null)
+    setSelectedOptions({})
+    setQty(1)
+    setCart([])
+    setCheckoutOpen(false)
+    setSuccess(null)
+    setStarted(false)
+    setServiceMode(null)
+  }, [])
+
+  const restartIdleTimer = useCallback(() => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current)
+    }
+    if (!started) return
+
+    idleTimerRef.current = setTimeout(() => {
+      resetKsoState()
+    }, idleTimeoutMs)
+  }, [idleTimeoutMs, resetKsoState, started])
+
   useEffect(() => {
+    let mounted = true
+
     async function load() {
       try {
         const [catalogData, settingsData, etaData] = await Promise.all([
           getCatalog(),
-          getSettings().catch(() => ({ items: [] })),
+          getSettings().catch(() => ({ items: [], effective: {} })),
           getCurrentEta().catch(() => null)
         ])
 
+        if (!mounted) return
         setCatalog(catalogData || { groups: [] })
 
-        const langs = parseLanguages(settingsData)
-        setLanguages(langs)
-        const defaultLanguage = settingsData?.effective?.default_language
-        const enabledModes = settingsData?.effective?.service_modes?.enabled
-        const idleTimeoutSec = Number(settingsData?.effective?.idle_timeout_seconds || 30)
+        const runtimeSettings = buildEffectiveRuntimeSettings(settingsData)
+        setLanguages(runtimeSettings.languages)
+        setServiceModes(runtimeSettings.serviceModes.enabled)
+        setIdleTimeoutMs(runtimeSettings.idleTimeoutSeconds * 1000)
 
-        if (Array.isArray(enabledModes) && enabledModes.length > 0) {
-          setServiceModes(enabledModes.map(x => String(x).toLowerCase()))
-        }
-        setIdleTimeoutMs(Math.max(10_000, idleTimeoutSec * 1000))
-
-        if (defaultLanguage && langs.includes(String(defaultLanguage).toLowerCase())) {
-          setCurrentLanguage(String(defaultLanguage).toLowerCase())
-        } else if (!langs.includes(currentLanguage)) {
-          setCurrentLanguage(langs[0] || 'ru')
-        }
+        setCurrentLanguage(prev => {
+          if (runtimeSettings.languages.includes(prev)) return prev
+          return runtimeSettings.defaultLanguage
+        })
 
         if (etaData) setCurrentEta(etaData)
       } catch (e) {
         console.error(e)
       } finally {
-        setLoading(false)
+        if (mounted) setLoading(false)
       }
     }
 
     load()
+    return () => {
+      mounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -138,35 +157,12 @@ export default function KsoPage() {
     loadPreview()
   }, [cart, serviceMode])
 
-  function resetKsoState() {
-    setActiveGroup('all')
-    setSelectedItem(null)
-    setSelectedOptions({})
-    setQty(1)
-    setCart([])
-    setCheckoutOpen(false)
-    setSuccess(null)
-    setStarted(false)
-    setServiceMode(null)
-  }
-
-  function restartIdleTimer() {
-    if (idleTimerRef.current) {
-      clearTimeout(idleTimerRef.current)
-    }
-    if (!started) return
-
-    idleTimerRef.current = setTimeout(() => {
-      resetKsoState()
-    }, idleTimeoutMs)
-  }
-
   useEffect(() => {
     restartIdleTimer()
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     }
-  }, [started, selectedItem, checkoutOpen, success, cart, serviceMode, idleTimeoutMs])
+  }, [restartIdleTimer, selectedItem, checkoutOpen, success, cart, serviceMode])
 
   useEffect(() => {
     function onAnyActivity() {
@@ -182,9 +178,7 @@ export default function KsoPage() {
       window.removeEventListener('touchstart', onAnyActivity)
       window.removeEventListener('keydown', onAnyActivity)
     }
-  }, [started])
-
-  const visibleGroups = catalog.groups || []
+  }, [restartIdleTimer])
 
   const visibleCatalog = useMemo(() => {
     if (activeGroup === 'all') return visibleGroups

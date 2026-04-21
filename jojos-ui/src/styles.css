@@ -94,7 +94,8 @@ button {
 
 .kso-primary-cta {
   margin-top: 34px;
-  height: 84px;
+  min-width: 360px;
+  height: 98px;
   padding: 0 34px;
   border-radius: 24px;
   font-size: 24px;
@@ -570,6 +571,36 @@ button {
   overflow: hidden;
 }
 
+.display-order-grid.cozy {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.display-order-grid.dense {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.display-order-grid.ultra {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.display-order-grid.ultra .display-order-card {
+  min-height: 116px;
+  border-radius: 18px;
+  padding: 12px;
+}
+
+.display-order-grid.ultra .display-order-number {
+  font-size: 38px;
+}
+
+.display-page-indicator {
+  margin-top: 10px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 800;
+  color: #6b7280;
+}
+
 .display-order-card {
   min-height: 150px;
   border-radius: 26px;
@@ -706,8 +737,8 @@ button {
 
 .kso-landing-mark,
 .kso-mode-mark {
-  width: 110px;
-  height: 110px;
+  width: 150px;
+  height: 150px;
   border-radius: 28px;
   display: grid;
   place-items: center;
@@ -795,7 +826,7 @@ button {
 }
 
 .kso-mode-option {
-  min-height: 180px;
+  min-height: 220px;
   border: 0;
   border-radius: 28px;
   background: linear-gradient(135deg, #fff3f4, #fff);
@@ -1185,6 +1216,7 @@ button {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
+  align-items: stretch;
 }
 
 .kso-option-chip {
