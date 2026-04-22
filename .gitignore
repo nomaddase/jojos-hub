@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+
+# Node
+node_modules/
+dist/
+
+# Local runtime / generated
+*.db
+*.sqlite
+*.sqlite3
+jojos_core.db
+static/
+data/media/
+config/*.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log

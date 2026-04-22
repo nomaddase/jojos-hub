@@ -1,0 +1,41 @@
+{
+  "client_code": "jojos-demo",
+  "point_code": "astana-01",
+  "settings": {
+    "brand_name": "JoJo's",
+    "idle_mode": "video",
+    "idle_video_key": "promo-main",
+    "languages": ["ru", "kz", "en"]
+  },
+  "inventory": [
+    {
+      "item_id": "lemonade",
+      "available_qty": 0,
+      "is_available": false
+    },
+    {
+      "item_id": "pizza23",
+      "available_qty": 12,
+      "is_available": true
+    },
+    {
+      "item_id": "tea_black",
+      "available_qty": 20,
+      "is_available": true
+    }
+  ],
+  "media": [
+    {
+      "asset_key": "promo-main",
+      "asset_type": "video",
+      "external_url": "https://example.com/promo.mp4",
+      "mime_type": "video/mp4"
+    },
+    {
+      "asset_key": "pizza23-img",
+      "asset_type": "image",
+      "external_url": "https://example.com/pizza23.jpg",
+      "mime_type": "image/jpeg"
+    }
+  ]
+}
