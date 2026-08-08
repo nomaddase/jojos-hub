@@ -26,7 +26,7 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y \
-  ca-certificates curl git jq rsync sqlite3 \
+  sudo ca-certificates curl git jq rsync sqlite3 \
   python3 python3-venv python3-pip \
   nodejs npm \
   openssh-server network-manager
