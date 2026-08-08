@@ -29,8 +29,9 @@ def list_inventory_items():
     return list(get_inventory_map().values())
 
 
-def upsert_inventory_item(item_id: str, available_qty: int, is_available: bool):
+def upsert_inventory_item(item_id: str, available_qty: float, is_available: bool):
     now = utc_now_iso()
+    qty = float(available_qty)
 
     with closing(get_conn()) as conn:
         cur = conn.cursor()
@@ -43,13 +44,13 @@ def upsert_inventory_item(item_id: str, available_qty: int, is_available: bool):
                 is_available = excluded.is_available,
                 updated_at = excluded.updated_at
             """,
-            (item_id, available_qty, 1 if is_available else 0, now),
+            (item_id, qty, 1 if is_available else 0, now),
         )
         conn.commit()
 
     return {
         "item_id": item_id,
-        "available_qty": available_qty,
+        "available_qty": qty,
         "is_available": is_available,
         "updated_at": now,
     }
