@@ -1,9 +1,10 @@
 import hashlib
+import html
 import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app.core.config import RELEASES_DIR
 
@@ -12,6 +13,11 @@ router = APIRouter()
 APP_FILES = {
     "kso": "jojos-kso-latest.apk",
     "kitchen": "jojos-kitchen-latest.apk",
+}
+
+APP_TITLES = {
+    "kso": "JoJo KSO",
+    "kitchen": "JoJo Kitchen",
 }
 
 
@@ -70,8 +76,75 @@ def read_release_manifest(app_role: str) -> dict | None:
         **manifest,
         "app": role,
         "apk_url": f"/api/apps/{role}/apk",
+        "download_page_url": f"/download/{role}",
         "size_bytes": actual_size,
     }
+
+
+def _download_page(role: str) -> str:
+    role = role.strip().lower()
+    if role not in APP_FILES:
+        raise HTTPException(status_code=404, detail="Unknown application role")
+
+    title = APP_TITLES[role]
+    manifest = read_release_manifest(role)
+
+    if manifest is None:
+        release_block = """
+        <div class="empty">
+          APK пока не загружен на этот Hub.<br>
+          Как только GitHub Actions доставит сборку, кнопка скачивания появится здесь автоматически.
+        </div>
+        """
+    else:
+        version_name = html.escape(str(manifest.get("version_name") or "unknown"))
+        version_code = html.escape(str(manifest.get("version_code") or "-"))
+        sha = html.escape(str(manifest.get("sha256") or ""))
+        size_mb = float(manifest.get("size_bytes") or 0) / 1024 / 1024
+        release_block = f"""
+        <div class="version">Версия <strong>{version_name}</strong> &nbsp; build #{version_code}</div>
+        <a class="download" href="/api/apps/{role}/apk">Скачать APK</a>
+        <div class="meta">Размер: {size_mb:.1f} MB</div>
+        <div class="meta sha">SHA-256: {sha}</div>
+        """
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title} — APK</title>
+<style>
+  * {{ box-sizing: border-box; }}
+  body {{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0e1711; color:#fff; font-family:Arial,sans-serif; padding:24px; }}
+  .card {{ width:min(620px,100%); background:#172019; border:1px solid #2d3b31; border-radius:22px; padding:34px; box-shadow:0 18px 50px rgba(0,0,0,.3); }}
+  .brand {{ color:#c7f36b; font-size:14px; font-weight:800; letter-spacing:.15em; }}
+  h1 {{ margin:10px 0 8px; font-size:34px; }}
+  .hint {{ color:#aab5ad; line-height:1.5; margin-bottom:28px; }}
+  .version {{ font-size:18px; margin-bottom:18px; }}
+  .download {{ display:block; width:100%; padding:18px 22px; border-radius:14px; background:#c7f36b; color:#101710; text-decoration:none; text-align:center; font-weight:900; font-size:20px; }}
+  .download:active {{ transform:scale(.99); }}
+  .meta {{ color:#95a198; font-size:13px; margin-top:14px; }}
+  .sha {{ overflow-wrap:anywhere; }}
+  .empty {{ padding:22px; border-radius:14px; background:#202b23; color:#c8d0ca; line-height:1.6; }}
+  .links {{ margin-top:24px; display:flex; gap:12px; flex-wrap:wrap; }}
+  .links a {{ color:#c7f36b; text-decoration:none; }}
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">JOJO HUB</div>
+    <h1>{title}</h1>
+    <div class="hint">Локальная страница установки. Файл скачивается напрямую с Hub и не требует интернета.</div>
+    {release_block}
+    <div class="links">
+      <a href="/download/kso">KSO</a>
+      <a href="/download/kitchen">Kitchen</a>
+      <a href="/api/health">Hub health</a>
+    </div>
+  </main>
+</body>
+</html>"""
 
 
 @router.get("/api/apps/{app_role}/version")
@@ -99,3 +172,8 @@ def app_apk(app_role: str):
             "Cache-Control": "no-cache",
         },
     )
+
+
+@router.get("/download/{app_role}", response_class=HTMLResponse)
+def app_download_page(app_role: str):
+    return HTMLResponse(_download_page(app_role))
