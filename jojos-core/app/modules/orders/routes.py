@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException
 
 from app.core.db import get_conn
-from app.modules.catalog.service import get_catalog_data
+from app.modules.catalog.routes import _catalog_source
 from app.modules.inventory.service import get_inventory_map
 from app.modules.orders.service import (
     CreateOrderRequest,
@@ -27,7 +27,7 @@ router = APIRouter()
 
 def build_catalog_index():
     index = {}
-    for group in get_catalog_data()["groups"]:
+    for group in _catalog_source()["groups"]:
         for item in group["items"]:
             options_index = {}
             for option_group in item.get("options", []):
@@ -103,6 +103,7 @@ def normalize_order_items(payload_items):
 
         normalized_options = []
         grouped_counts = {}
+        seen_options = set()
         for option in payload_item.options:
             catalog_group = catalog_item["options"].get(option.group_id)
             if not catalog_group:
@@ -112,7 +113,24 @@ def normalize_order_items(payload_items):
             if not catalog_option:
                 raise HTTPException(status_code=400, detail=f"Unknown option_id: {option.option_id}")
 
-            grouped_counts[option.group_id] = grouped_counts.get(option.group_id, 0) + 1
+            option_key = (option.group_id, option.option_id)
+            if option_key in seen_options:
+                raise HTTPException(status_code=400, detail=f"Duplicate option: {option.group_id}/{option.option_id}")
+            seen_options.add(option_key)
+
+            selection_index = grouped_counts.get(option.group_id, 0)
+            grouped_counts[option.group_id] = selection_index + 1
+
+            # Authoritative configurator pricing:
+            # - single-choice selection is included in the product price;
+            # - for multi-choice groups, the first option actually selected by
+            #   the guest is included, subsequent selections use catalog price.
+            effective_price = (
+                0
+                if catalog_group["mode"] == "single" or selection_index == 0
+                else int(catalog_option["price"])
+            )
+
             option_stock_key = f"{payload_item.item_id}:{option.group_id}:{option.option_id}"
             _assert_inventory_available(inventory_map, option.option_id, item_qty, catalog_option["name"])
             _assert_inventory_available(inventory_map, option_stock_key, item_qty, catalog_option["name"])
@@ -122,7 +140,7 @@ def normalize_order_items(payload_items):
                     "group_id": option.group_id,
                     "option_id": option.option_id,
                     "name": catalog_option["name"],
-                    "price": int(catalog_option["price"]),
+                    "price": effective_price,
                 }
             )
 
