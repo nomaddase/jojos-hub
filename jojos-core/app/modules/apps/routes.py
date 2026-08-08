@@ -132,7 +132,7 @@ def _download_page(role: str) -> str:
         size_mb = float(manifest.get("size_bytes") or 0) / 1024 / 1024
         release_block = f"""
         <div class="version">Версия <strong>{version_name}</strong> &nbsp; build #{version_code}</div>
-        <a class="download" href="/download/{role}.apk" download>Скачать APK</a>
+        <a class="download" href="/api/apps/{role}/apk">Скачать APK</a>
         <div class="meta">Размер: {size_mb:.1f} MB</div>
         <div class="meta sha">SHA-256: {sha}</div>
         """
@@ -193,9 +193,15 @@ def app_apk(app_role: str):
     return _apk_response(role)
 
 
-@router.get("/download/{app_role}", response_class=HTMLResponse)
+@router.get("/download/{app_role}")
 def app_download_page(app_role: str):
-    return HTMLResponse(_download_page(app_role), headers={"Cache-Control": "no-store"})
+    role = app_role.strip().lower()
+    if role.endswith(".apk"):
+        role = role[:-4]
+        if role not in APP_FILES:
+            raise HTTPException(status_code=404, detail="Unknown application role")
+        return _apk_response(role)
+    return HTMLResponse(_download_page(role), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/download/{app_role}.apk")
