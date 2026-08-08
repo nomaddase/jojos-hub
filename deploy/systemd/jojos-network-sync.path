@@ -1,9 +1,9 @@
 [Unit]
-Description=Watch JoJo Central bootstrap for Wi-Fi changes
+Description=Watch JoJo Central network policy for Wi-Fi changes
 After=jojos-core.service
 
 [Path]
-PathChanged=/home/admini/jojos-core/config/central_bootstrap.json
+PathChanged=/home/admini/jojos-core/config/central_network.json
 Unit=jojos-network-sync.service
 
 [Install]
