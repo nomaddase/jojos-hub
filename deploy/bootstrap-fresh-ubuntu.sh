@@ -97,6 +97,12 @@ systemctl daemon-reload
 systemctl enable --now jojos-core.service
 systemctl enable --now jojos-http-proxy.socket
 
+# The physical monitor attached to a store Hub is the public order-status display.
+# It uses a separate locked-down graphical account and opens /display on every boot.
+if [ "${JOJOS_SETUP_DISPLAY:-1}" != "0" ] && [ -f "${CHECKOUT}/deploy/setup-display-kiosk.sh" ]; then
+  bash "${CHECKOUT}/deploy/setup-display-kiosk.sh"
+fi
+
 for i in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8080/api/health; then
     echo
@@ -104,6 +110,9 @@ for i in $(seq 1 30); do
     echo "Checkout: ${CHECKOUT}"
     echo "Runtime:  ${CORE}"
     echo "Local HTTP proxy: port 80 -> 8080"
+    if [ "${JOJOS_SETUP_DISPLAY:-1}" != "0" ]; then
+      echo "Public order display: auto-start enabled on the directly connected monitor"
+    fi
     echo "Next: configure LAN/Wi-Fi and GitHub self-hosted runners."
     exit 0
   fi
