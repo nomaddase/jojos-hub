@@ -1,0 +1,9 @@
+[Unit]
+Description=JoJo Hub local HTTP proxy to Core
+Requires=jojos-http-proxy.socket
+After=jojos-core.service
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 127.0.0.1:8080
+PrivateTmp=true
+NoNewPrivileges=true
