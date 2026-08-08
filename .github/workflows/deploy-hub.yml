@@ -96,19 +96,39 @@ jobs:
           set -euo pipefail
           sudo systemctl restart jojos-core.service
 
+      - name: Keep local port 80 gateway active
+        shell: bash
+        run: |
+          set -euo pipefail
+          if systemctl cat jojos-http-proxy.socket >/dev/null 2>&1; then
+            sudo systemctl enable --now jojos-http-proxy.socket
+            echo "Hub local gateway active on port 80."
+          else
+            echo "jojos-http-proxy.socket is not installed; existing Hub bootstrap must be applied once with sudo."
+          fi
+
       - name: Health check
         shell: bash
         run: |
           set -euo pipefail
           for i in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:8080/api/health >/tmp/jojos-health.json; then
+            CORE_OK=0
+            HTTP_OK=0
+            curl -fsS http://127.0.0.1:8080/api/health >/tmp/jojos-health.json && CORE_OK=1 || true
+            if systemctl cat jojos-http-proxy.socket >/dev/null 2>&1; then
+              curl -fsS http://127.0.0.1/api/health >/tmp/jojos-health-port80.json && HTTP_OK=1 || true
+            else
+              HTTP_OK=1
+            fi
+            if [ "$CORE_OK" = 1 ] && [ "$HTTP_OK" = 1 ]; then
               cat /tmp/jojos-health.json
+              echo "Core and local HTTP gateway are healthy."
               exit 0
             fi
             sleep 1
           done
           sudo systemctl status jojos-core.service --no-pager || true
-          sudo journalctl -u jojos-core.service -n 100 --no-pager || true
+          sudo systemctl status jojos-http-proxy.socket --no-pager || true
           exit 1
 
       - name: Configure protected Central Base
