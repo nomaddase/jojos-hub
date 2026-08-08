@@ -96,15 +96,16 @@ jobs:
           set -euo pipefail
           sudo systemctl restart jojos-core.service
 
-      - name: Keep local port 80 gateway active
+      - name: Check local port 80 gateway
         shell: bash
         run: |
           set -euo pipefail
-          if systemctl cat jojos-http-proxy.socket >/dev/null 2>&1; then
-            sudo systemctl enable --now jojos-http-proxy.socket
-            echo "Hub local gateway active on port 80."
+          if systemctl is-active --quiet jojos-http-proxy.socket; then
+            echo "Hub local gateway is active on port 80."
+          elif systemctl cat jojos-http-proxy.socket >/dev/null 2>&1; then
+            echo "WARNING: jojos-http-proxy.socket is installed but inactive. Run once on Hub: sudo systemctl enable --now jojos-http-proxy.socket"
           else
-            echo "jojos-http-proxy.socket is not installed; existing Hub bootstrap must be applied once with sudo."
+            echo "WARNING: local port 80 gateway is not installed. Run the Hub bootstrap once with sudo."
           fi
 
       - name: Health check
@@ -112,23 +113,19 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 20); do
-            CORE_OK=0
-            HTTP_OK=0
-            curl -fsS http://127.0.0.1:8080/api/health >/tmp/jojos-health.json && CORE_OK=1 || true
-            if systemctl cat jojos-http-proxy.socket >/dev/null 2>&1; then
-              curl -fsS http://127.0.0.1/api/health >/tmp/jojos-health-port80.json && HTTP_OK=1 || true
-            else
-              HTTP_OK=1
-            fi
-            if [ "$CORE_OK" = 1 ] && [ "$HTTP_OK" = 1 ]; then
+            if curl -fsS http://127.0.0.1:8080/api/health >/tmp/jojos-health.json; then
               cat /tmp/jojos-health.json
-              echo "Core and local HTTP gateway are healthy."
+              if systemctl is-active --quiet jojos-http-proxy.socket; then
+                curl -fsS http://127.0.0.1/api/health >/tmp/jojos-health-port80.json
+                echo "Core and local port 80 gateway are healthy."
+              else
+                echo "Core is healthy; port 80 gateway needs one-time local sudo activation."
+              fi
               exit 0
             fi
             sleep 1
           done
           sudo systemctl status jojos-core.service --no-pager || true
-          sudo systemctl status jojos-http-proxy.socket --no-pager || true
           exit 1
 
       - name: Configure protected Central Base
@@ -148,8 +145,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -x /usr/local/sbin/jojos-apply-central-network ] && systemctl cat jojos-network-sync.service >/dev/null 2>&1; then
-            sudo systemctl start jojos-network-sync.service
-            echo "Central Base Wi-Fi policy applied."
+            if sudo -n systemctl start jojos-network-sync.service 2>/dev/null; then
+              echo "Central Base Wi-Fi policy applied."
+            else
+              echo "Central Wi-Fi sync is installed; policy will apply by its path/timer service."
+            fi
           else
             echo "Central Wi-Fi sync helper is not installed yet; run deploy/install-network-sync.sh once with sudo on the Hub."
           fi
