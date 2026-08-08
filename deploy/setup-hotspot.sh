@@ -1,30 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Configure every JoJo store hub with the same recovery/store Wi-Fi.
-# These credentials are intentionally static so KSO/Kitchen devices can move
-# between stores, reconnect automatically, and then re-bind to the new Hub ID.
-# The project owner explicitly chose to keep these store-LAN credentials in Git.
+# Configure every JoJo store hub with the same store Wi-Fi.
+# The SSID and address are public configuration. The shared password is kept in
+# the private jojos-base repository and is supplied at runtime by
+# deploy/apply-store-network.sh.
 #
 # Defaults:
 #   SSID:    JoJos-Hub
-#   Password: JoJosHub2026!
 #   Hub IP:  192.168.50.1/24
 #
-# Optional overrides are still supported for exceptional installations:
-#   JOJOS_WIFI_SSID=...
+# Required:
 #   JOJOS_WIFI_PASSWORD=...
+#
+# Optional overrides:
+#   JOJOS_WIFI_SSID=...
 #   JOJOS_WIFI_IFACE=wlan0
 #   JOJOS_WIFI_ADDRESS=192.168.50.1/24
 
 SSID="${JOJOS_WIFI_SSID:-JoJos-Hub}"
-PSK="${JOJOS_WIFI_PASSWORD:-JoJosHub2026!}"
+PSK="${JOJOS_WIFI_PASSWORD:-}"
 ADDR="${JOJOS_WIFI_ADDRESS:-192.168.50.1/24}"
 CON_NAME="${JOJOS_WIFI_CONNECTION:-jojos-hotspot}"
 IFACE="${JOJOS_WIFI_IFACE:-}"
 
 if [ "${EUID}" -ne 0 ]; then
   echo "Run with sudo."
+  exit 1
+fi
+
+if [ -z "${PSK}" ]; then
+  echo "JOJOS_WIFI_PASSWORD is required. Use deploy/apply-store-network.sh."
   exit 1
 fi
 
