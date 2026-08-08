@@ -79,9 +79,8 @@ jobs:
             sudo -n systemctl enable --now jojos-network-sync.path jojos-network-sync.timer
             echo "Stable central Wi-Fi helpers refreshed."
           else
-            echo "WARNING: runner cannot refresh privileged Wi-Fi helpers automatically."
-            echo "Stopping periodic Wi-Fi reconfiguration to prevent Android disconnect loops."
-            sudo -n systemctl stop jojos-network-sync.path jojos-network-sync.timer 2>/dev/null || true
+            echo "Runner has no passwordless permission to refresh root Wi-Fi helpers."
+            echo "Runtime compatibility mode will neutralize the legacy reconnect trigger without sudo."
           fi
 
       - name: Set up Node for legacy web fallback
@@ -158,6 +157,19 @@ jobs:
           STATUS="$(curl -fsS http://127.0.0.1:8080/api/central/status)"
           python3 -c 'import json,os,sys; d=json.loads(sys.stdin.read()); expected=os.environ["JOJOS_CENTRAL_BASE_URL"]; actual=d.get("base_url"); assert actual==expected, f"Central Base URL mismatch: {actual} != {expected}"; print("Central Base URL pinned to HTTPS")' <<<"$STATUS"
 
+      - name: Verify Wi-Fi reconnect loop is neutralized
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f /home/admini/jojos-core/config/central_network.json
+          test -f /home/admini/jojos-core/config/central_bootstrap_cache.json
+          if [ -e /home/admini/jojos-core/config/central_bootstrap.json ]; then
+            echo "ERROR: legacy bootstrap trigger still exists and could bounce Wi-Fi."
+            exit 1
+          fi
+          echo "Dedicated network policy cache exists."
+          echo "Legacy 30/60-second Wi-Fi reconnect trigger is absent."
+
       - name: Apply centrally managed Wi-Fi if installed
         shell: bash
         run: |
@@ -166,7 +178,7 @@ jobs:
             if sudo -n systemctl start jojos-network-sync.service 2>/dev/null; then
               echo "Central Base Wi-Fi policy checked without unnecessary hotspot restart."
             else
-              echo "Central Wi-Fi sync is installed; policy will apply by its path/timer service."
+              echo "Existing root Wi-Fi sync service cannot be invoked by the runner; runtime remains in stable compatibility mode."
             fi
           else
             echo "Central Wi-Fi sync helper is not installed yet; run deploy/install-network-sync.sh once with sudo on the Hub."
