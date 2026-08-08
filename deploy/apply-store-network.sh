@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Fetch the shared store-network configuration from the private jojos-base repo
-# using the current user's GitHub CLI authorization, then apply it with sudo.
+# Fetch the shared store-network configuration from the private jojos-base repo,
+# apply the Wi-Fi hotspot, and expose JoJo Core on local HTTP port 80.
 # No Wi-Fi password is printed or stored in this public repository.
 
 PRIVATE_REPO="${JOJOS_NETWORK_REPO:-nomaddase/jojos-base}"
@@ -23,10 +23,15 @@ if ! gh auth status >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -f "${CHECKOUT}/deploy/setup-hotspot.sh" ]; then
-  echo "Missing ${CHECKOUT}/deploy/setup-hotspot.sh"
-  exit 1
-fi
+for file in \
+  "${CHECKOUT}/deploy/setup-hotspot.sh" \
+  "${CHECKOUT}/deploy/systemd/jojos-http-proxy.socket" \
+  "${CHECKOUT}/deploy/systemd/jojos-http-proxy.service"; do
+  if [ ! -f "${file}" ]; then
+    echo "Missing ${file}"
+    exit 1
+  fi
+done
 
 TMP="$(mktemp)"
 trap 'rm -f "${TMP}"' EXIT
@@ -54,4 +59,24 @@ sudo \
   JOJOS_WIFI_IFACE="${JOJOS_WIFI_IFACE:-}" \
   bash "${CHECKOUT}/deploy/setup-hotspot.sh"
 
+if [ ! -x /usr/lib/systemd/systemd-socket-proxyd ]; then
+  echo "systemd-socket-proxyd is missing; cannot expose local port 80."
+  exit 1
+fi
+
+sudo install -m 0644 \
+  "${CHECKOUT}/deploy/systemd/jojos-http-proxy.socket" \
+  /etc/systemd/system/jojos-http-proxy.socket
+sudo install -m 0644 \
+  "${CHECKOUT}/deploy/systemd/jojos-http-proxy.service" \
+  /etc/systemd/system/jojos-http-proxy.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now jojos-http-proxy.socket
+
+HUB_IP="${JOJOS_WIFI_ADDRESS:-192.168.50.1/24}"
+HUB_IP="${HUB_IP%/*}"
+
 echo "Store Wi-Fi applied from private configuration."
+echo "Local installer URLs:"
+echo "  http://${HUB_IP}/download/kso"
+echo "  http://${HUB_IP}/download/kitchen"
