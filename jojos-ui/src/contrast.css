@@ -115,34 +115,59 @@ body,
   box-shadow: none;
 }
 
-/* Public order board target: 1920x1080 landscape. The grid intentionally uses
-   four columns and up to four rows per queue so more order numbers stay visible
-   without sacrificing legibility from a distance. */
+/* Public order board: never stack the queues vertically. The older responsive
+   rule switched to one column below 1200 CSS pixels, which pushed the Ready
+   queue below the kiosk viewport. Keep both queues visible and make the cards
+   more compact instead; this does not change the monitor resolution. */
 .display-board {
-  width: 100vw;
-  height: 100vh;
-  padding: 18px;
-  gap: 18px !important;
-  overflow: hidden;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  padding: 12px !important;
+  gap: 12px !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  overflow: hidden !important;
 }
 
 .display-zone {
+  min-width: 0 !important;
   min-height: 0 !important;
-  height: calc(100vh - 36px);
-  padding: 18px !important;
-  gap: 14px !important;
-  border-radius: 24px !important;
+  height: 100% !important;
+  padding: 12px !important;
+  gap: 10px !important;
+  border-radius: 18px !important;
+}
+
+.display-zone-head {
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.display-zone-head .eyebrow {
+  margin-bottom: 5px !important;
+  font-size: 11px !important;
 }
 
 .display-zone-title {
-  font-size: 34px !important;
+  font-size: 28px !important;
+  line-height: 1 !important;
 }
 
 .display-zone-count {
-  min-width: 58px !important;
-  height: 58px !important;
-  border-radius: 16px !important;
-  font-size: 24px !important;
+  min-width: 46px !important;
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 12px !important;
+  font-size: 20px !important;
+}
+
+.display-order-grid.cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+}
+
+.display-order-grid.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
 .display-order-grid.cols-4 {
@@ -150,20 +175,26 @@ body,
 }
 
 .display-order-grid {
-  gap: 10px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  gap: 8px !important;
 }
 
 .display-order-card,
 .display-order-grid.ultra .display-order-card {
+  min-width: 0 !important;
   min-height: 0 !important;
-  border-radius: 16px !important;
-  padding: 10px !important;
+  height: 100% !important;
+  border-radius: 12px !important;
+  padding: 6px !important;
+  gap: 4px !important;
 }
 
 .display-order-number,
 .display-order-grid.ultra .display-order-number {
-  font-size: clamp(30px, 2.35vw, 46px) !important;
-  letter-spacing: -0.04em;
+  font-size: clamp(24px, 1.8vw, 36px) !important;
+  line-height: 1 !important;
+  letter-spacing: -0.035em !important;
 }
 
 .display-order-card.ready,
@@ -176,8 +207,63 @@ body,
   color: #1d1d1f !important;
 }
 
+.display-zone-empty {
+  font-size: 18px !important;
+  border-radius: 14px !important;
+}
+
+.display-page-indicator {
+  right: 14px !important;
+  bottom: 5px !important;
+  font-size: 11px !important;
+}
+
 @media (max-width: 1200px) {
   .display-board {
-    padding: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    padding: 6px !important;
+    gap: 6px !important;
+  }
+
+  .display-zone {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 8px !important;
+    gap: 6px !important;
+    border-radius: 12px !important;
+  }
+
+  .display-zone-title {
+    font-size: 20px !important;
+  }
+
+  .display-zone-count {
+    min-width: 34px !important;
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 9px !important;
+    font-size: 15px !important;
+  }
+
+  .display-order-grid {
+    gap: 5px !important;
+  }
+
+  .display-order-card,
+  .display-order-grid.ultra .display-order-card {
+    border-radius: 9px !important;
+    padding: 4px !important;
+  }
+
+  .display-order-number,
+  .display-order-grid.ultra .display-order-number {
+    font-size: clamp(18px, 2.6vw, 28px) !important;
+  }
+
+  .display-zone-empty {
+    font-size: 14px !important;
   }
 }
