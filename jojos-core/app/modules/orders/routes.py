@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.db import get_conn
 from app.modules.catalog.routes import _catalog_source
+from app.modules.central.outbox import enqueue_event
 from app.modules.inventory.service import get_inventory_map
 from app.modules.orders.service import (
     CreateOrderRequest,
@@ -46,17 +47,39 @@ def build_catalog_index():
                     "items": option_items,
                 }
 
+            bom = []
+            for line in item.get("bom") or []:
+                component_id = str(line.get("component_id") or "").strip()
+                if not component_id:
+                    continue
+                try:
+                    qty = float(line.get("qty") or 0)
+                except (TypeError, ValueError):
+                    qty = 0.0
+                if qty <= 0:
+                    continue
+                bom.append(
+                    {
+                        "component_id": component_id,
+                        "component_code": line.get("component_code"),
+                        "name": line.get("name") or component_id,
+                        "qty": qty,
+                        "unit": line.get("unit") or "",
+                    }
+                )
+
             index[item["id"]] = {
                 "id": item["id"],
                 "name": item["name"],
                 "price": int(item.get("price") or 0),
                 "prep_seconds": int(item.get("prep_seconds") or 120),
                 "options": options_index,
+                "bom": bom,
             }
     return index
 
 
-def _assert_inventory_available(inventory_map: dict, item_id: str, required_qty: int, label: str):
+def _assert_inventory_available(inventory_map: dict, item_id: str, required_qty: float, label: str):
     stock = inventory_map.get(item_id)
     if not stock:
         return
@@ -64,11 +87,16 @@ def _assert_inventory_available(inventory_map: dict, item_id: str, required_qty:
         raise HTTPException(status_code=409, detail=f"{label} unavailable")
 
     available_qty = stock.get("available_qty")
-    if available_qty is not None and int(available_qty) < required_qty:
-        raise HTTPException(status_code=409, detail=f"{label} out of stock")
+    if available_qty is not None:
+        try:
+            available = float(available_qty)
+        except (TypeError, ValueError):
+            available = 0.0
+        if available + 1e-9 < float(required_qty):
+            raise HTTPException(status_code=409, detail=f"{label} out of stock")
 
 
-def _consume_inventory(cur, inventory_map: dict, item_id: str, used_qty: int):
+def _consume_inventory(cur, inventory_map: dict, item_id: str, used_qty: float):
     stock = inventory_map.get(item_id)
     if not stock:
         return
@@ -77,8 +105,12 @@ def _consume_inventory(cur, inventory_map: dict, item_id: str, used_qty: int):
     if available_qty is None:
         return
 
-    next_qty = max(0, int(available_qty) - int(used_qty))
-    next_available = 1 if bool(stock.get("is_available", True)) and next_qty > 0 else 0
+    try:
+        current = float(available_qty)
+    except (TypeError, ValueError):
+        current = 0.0
+    next_qty = max(0.0, current - float(used_qty))
+    next_available = 1 if bool(stock.get("is_available", True)) and next_qty > 1e-9 else 0
 
     cur.execute(
         "UPDATE inventory_items SET available_qty = ?, is_available = ? WHERE item_id = ?",
@@ -86,6 +118,27 @@ def _consume_inventory(cur, inventory_map: dict, item_id: str, used_qty: int):
     )
     stock["available_qty"] = next_qty
     stock["is_available"] = bool(next_available)
+
+
+def _ingredient_requirements(normalized_items: list[dict]) -> dict[str, dict]:
+    requirements: dict[str, dict] = {}
+    for item in normalized_items:
+        item_qty = int(item.get("qty") or 1)
+        for line in item.get("bom") or []:
+            component_id = line["component_id"]
+            required = float(line["qty"]) * item_qty
+            row = requirements.setdefault(
+                component_id,
+                {
+                    "component_id": component_id,
+                    "component_code": line.get("component_code"),
+                    "name": line.get("name") or component_id,
+                    "unit": line.get("unit") or "",
+                    "qty": 0.0,
+                },
+            )
+            row["qty"] = float(row["qty"]) + required
+    return requirements
 
 
 def normalize_order_items(payload_items):
@@ -156,7 +209,18 @@ def normalize_order_items(payload_items):
                 "price": int(catalog_item["price"]),
                 "prep_seconds": int(catalog_item["prep_seconds"]),
                 "options": normalized_options,
+                "bom": catalog_item.get("bom") or [],
             }
+        )
+
+    # Validate the full basket, not each dish in isolation. If two dishes use
+    # the same ingredient, their combined requirement must fit point stock.
+    for component in _ingredient_requirements(normalized_items).values():
+        _assert_inventory_available(
+            inventory_map,
+            component["component_id"],
+            component["qty"],
+            component["name"],
         )
 
     return normalized_items, inventory_map
@@ -233,6 +297,7 @@ def create_order(payload: CreateOrderRequest):
         raise HTTPException(status_code=400, detail="Unsupported service_mode")
 
     normalized_items, inventory_map = normalize_order_items(payload.items)
+    ingredient_requirements = _ingredient_requirements(normalized_items)
 
     total = 0
     for item in normalized_items:
@@ -300,6 +365,7 @@ def create_order(payload: CreateOrderRequest):
             "cancelled_at": None,
         },
         "items": snapshot_items,
+        "ingredient_consumption": list(ingredient_requirements.values()),
     }
 
     with closing(get_conn()) as conn:
@@ -340,6 +406,8 @@ def create_order(payload: CreateOrderRequest):
                 "INSERT INTO order_items (id, order_id, item_id, name, qty, price) VALUES (?, ?, ?, ?, ?, ?)",
                 (order_item_id, order_id, item["item_id"], item["name"], item["qty"], item["price"]),
             )
+            # Keep backward compatibility for stores that used direct finished
+            # product stock before recipes/BOM were introduced.
             _consume_inventory(cur, inventory_map, item["item_id"], item["qty"])
 
             for option in item["options"]:
@@ -357,6 +425,27 @@ def create_order(payload: CreateOrderRequest):
                 option_stock_key = f"{item['item_id']}:{option['group_id']}:{option['option_id']}"
                 _consume_inventory(cur, inventory_map, option["option_id"], item["qty"])
                 _consume_inventory(cur, inventory_map, option_stock_key, item["qty"])
+
+        # Ingredient consumption and its Base events are committed in the same
+        # transaction as the order. The local stop list therefore updates
+        # immediately even when Internet access to Base is unavailable.
+        for component in ingredient_requirements.values():
+            component_id = component["component_id"]
+            used_qty = float(component["qty"])
+            _consume_inventory(cur, inventory_map, component_id, used_qty)
+            enqueue_event(
+                cur,
+                "inventory.consumed",
+                {
+                    "component_id": component_id,
+                    "qty": used_qty,
+                    "unit": component.get("unit") or "",
+                    "order_id": order_id,
+                    "order_number": order_number,
+                    "component_name": component.get("name") or component_id,
+                },
+                event_id=f"inventory:{order_id}:{component_id}",
+            )
 
         conn.commit()
 
