@@ -1,0 +1,86 @@
+name: Deploy JoJo Hub
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'jojos-core/**'
+      - 'deploy/**'
+      - '.github/workflows/deploy-hub.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: jojos-hub-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to store hub
+    runs-on: [self-hosted, linux, x64, jojos-hub]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Backup runtime data
+        shell: bash
+        run: |
+          set -euo pipefail
+          TS="$(date +%Y%m%d-%H%M%S)"
+          BACKUP_DIR="/home/admini/jojos-backups/hub/${TS}"
+          mkdir -p "$BACKUP_DIR"
+          [ -f /home/admini/jojos-core/jojos_core.db ] && cp -a /home/admini/jojos-core/jojos_core.db "$BACKUP_DIR/" || true
+          [ -d /home/admini/jojos-core/config ] && cp -a /home/admini/jojos-core/config "$BACKUP_DIR/" || true
+          [ -d /home/admini/jojos-core/data ] && cp -a /home/admini/jojos-core/data "$BACKUP_DIR/" || true
+          echo "Backup: $BACKUP_DIR"
+
+      - name: Deploy backend source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /home/admini/jojos-core
+          rsync -a --delete \
+            --exclude 'venv/' \
+            --exclude '.venv/' \
+            --exclude 'jojos_core.db' \
+            --exclude 'config/' \
+            --exclude 'data/' \
+            --exclude 'static/' \
+            --exclude '__pycache__/' \
+            ./jojos-core/ /home/admini/jojos-core/
+
+      - name: Update Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /home/admini/jojos-core
+          if [ ! -x venv/bin/python ]; then
+            python3 -m venv venv
+          fi
+          if [ -f requirements.txt ]; then
+            venv/bin/pip install -r requirements.txt
+          fi
+          venv/bin/python -m compileall app
+
+      - name: Restart JoJo Core
+        shell: bash
+        run: |
+          set -euo pipefail
+          systemctl --user daemon-reload
+          systemctl --user restart jojos-core.service
+
+      - name: Health check
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8080/api/health >/tmp/jojos-health.json; then
+              cat /tmp/jojos-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          systemctl --user status jojos-core.service --no-pager || true
+          journalctl --user -u jojos-core.service -n 100 --no-pager || true
+          exit 1
