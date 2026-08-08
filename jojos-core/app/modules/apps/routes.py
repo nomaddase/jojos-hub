@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app.core.config import RELEASES_DIR
 
@@ -19,6 +19,12 @@ APP_TITLES = {
     "kso": "JoJo KSO",
     "kitchen": "JoJo Kitchen",
 }
+
+# APK checksum verification used to re-read the complete APK every time the
+# browser opened /download/... and again before the download itself. On small
+# Hub hardware that made the first request look like the site was unavailable.
+# Cache a successful verification for the exact file mtime/size instead.
+_verified: dict[str, tuple[int, int, str]] = {}
 
 
 def _release_dir(app_role: str) -> Path:
@@ -45,6 +51,19 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _validate_apk(role: str, apk_path: Path, expected_sha: str) -> None:
+    stat = apk_path.stat()
+    key = role
+    cached = _verified.get(key)
+    fingerprint = (stat.st_mtime_ns, stat.st_size, expected_sha)
+    if cached == fingerprint:
+        return
+    actual_sha = _sha256(apk_path)
+    if actual_sha != expected_sha:
+        raise HTTPException(status_code=503, detail="Cached APK checksum does not match manifest")
+    _verified[key] = fingerprint
+
+
 def read_release_manifest(app_role: str) -> dict | None:
     role = app_role.strip().lower()
     manifest_path = _manifest_path(role)
@@ -68,9 +87,7 @@ def read_release_manifest(app_role: str) -> dict | None:
 
     expected_sha = str(manifest.get("sha256") or "").lower()
     if expected_sha:
-        actual_sha = _sha256(apk_path)
-        if actual_sha != expected_sha:
-            raise HTTPException(status_code=503, detail="Cached APK checksum does not match manifest")
+        _validate_apk(role, apk_path, expected_sha)
 
     return {
         **manifest,
@@ -93,8 +110,9 @@ def _download_page(role: str) -> str:
         release_block = """
         <div class="empty">
           APK пока не загружен на этот Hub.<br>
-          Как только GitHub Actions доставит сборку, кнопка скачивания появится здесь автоматически.
+          Страница обновится автоматически через 3 секунды.
         </div>
+        <script>setTimeout(function(){location.reload()},3000)</script>
         """
     else:
         version_name = html.escape(str(manifest.get("version_name") or "unknown"))
@@ -103,7 +121,7 @@ def _download_page(role: str) -> str:
         size_mb = float(manifest.get("size_bytes") or 0) / 1024 / 1024
         release_block = f"""
         <div class="version">Версия <strong>{version_name}</strong> &nbsp; build #{version_code}</div>
-        <a class="download" href="/api/apps/{role}/apk">Скачать APK</a>
+        <a class="download" href="/download/{role}.apk" download>Скачать APK</a>
         <div class="meta">Размер: {size_mb:.1f} MB</div>
         <div class="meta sha">SHA-256: {sha}</div>
         """
@@ -113,34 +131,35 @@ def _download_page(role: str) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store">
 <title>{title} — APK</title>
 <style>
   * {{ box-sizing: border-box; }}
-  body {{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#0e1711; color:#fff; font-family:Arial,sans-serif; padding:24px; }}
-  .card {{ width:min(620px,100%); background:#172019; border:1px solid #2d3b31; border-radius:22px; padding:34px; box-shadow:0 18px 50px rgba(0,0,0,.3); }}
-  .brand {{ color:#c7f36b; font-size:14px; font-weight:800; letter-spacing:.15em; }}
+  body {{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#fff7f8; color:#1d1d1f; font-family:Roboto,Arial,sans-serif; padding:24px; }}
+  .card {{ width:min(620px,100%); background:#fff; border:1px solid #f0dadd; border-radius:24px; padding:34px; box-shadow:0 18px 55px rgba(60,0,8,.09); }}
+  .brand {{ color:#e30613; font-size:14px; font-weight:900; letter-spacing:.15em; }}
   h1 {{ margin:10px 0 8px; font-size:34px; }}
-  .hint {{ color:#aab5ad; line-height:1.5; margin-bottom:28px; }}
+  .hint {{ color:#70686a; line-height:1.5; margin-bottom:28px; }}
   .version {{ font-size:18px; margin-bottom:18px; }}
-  .download {{ display:block; width:100%; padding:18px 22px; border-radius:14px; background:#c7f36b; color:#101710; text-decoration:none; text-align:center; font-weight:900; font-size:20px; }}
-  .download:active {{ transform:scale(.99); }}
-  .meta {{ color:#95a198; font-size:13px; margin-top:14px; }}
+  .download {{ display:block; width:100%; padding:18px 22px; border-radius:14px; background:#e30613; color:#fff; text-decoration:none; text-align:center; font-weight:900; font-size:20px; box-shadow:0 8px 22px rgba(227,6,19,.20); }}
+  .download:active {{ transform:scale(.99); background:#c40018; }}
+  .meta {{ color:#81787a; font-size:13px; margin-top:14px; }}
   .sha {{ overflow-wrap:anywhere; }}
-  .empty {{ padding:22px; border-radius:14px; background:#202b23; color:#c8d0ca; line-height:1.6; }}
+  .empty {{ padding:22px; border-radius:14px; background:#fff0f2; color:#6e343b; line-height:1.6; border:1px solid #ffd7dc; }}
   .links {{ margin-top:24px; display:flex; gap:12px; flex-wrap:wrap; }}
-  .links a {{ color:#c7f36b; text-decoration:none; }}
+  .links a {{ color:#c40018; text-decoration:none; font-weight:700; }}
 </style>
 </head>
 <body>
   <main class="card">
     <div class="brand">JOJO HUB</div>
     <h1>{title}</h1>
-    <div class="hint">Локальная страница установки. Файл скачивается напрямую с Hub и не требует интернета.</div>
+    <div class="hint">Локальная установка. APK скачивается напрямую с Hub, интернет не нужен.</div>
     {release_block}
     <div class="links">
       <a href="/download/kso">KSO</a>
       <a href="/download/kitchen">Kitchen</a>
-      <a href="/api/health">Hub health</a>
+      <a href="/api/health">Проверка Hub</a>
     </div>
   </main>
 </body>
@@ -169,11 +188,23 @@ def app_apk(app_role: str):
         filename=APP_FILES[role],
         headers={
             "ETag": f'"sha256:{manifest.get("sha256", "")}"',
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{APP_FILES[role]}"',
         },
     )
 
 
 @router.get("/download/{app_role}", response_class=HTMLResponse)
 def app_download_page(app_role: str):
-    return HTMLResponse(_download_page(app_role))
+    return HTMLResponse(
+        _download_page(app_role),
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/download/{app_role}.apk")
+def short_apk_download(app_role: str):
+    role = app_role.strip().lower()
+    if role not in APP_FILES:
+        raise HTTPException(status_code=404, detail="Unknown application role")
+    return RedirectResponse(url=f"/api/apps/{role}/apk", status_code=307)
