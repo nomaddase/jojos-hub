@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 import threading
 import time
@@ -36,7 +37,9 @@ def _write_json(path: Path, value: dict):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.chmod(tmp, 0o600)
     tmp.replace(path)
+    os.chmod(path, 0o600)
 
 
 def get_central_config() -> dict:
@@ -110,18 +113,25 @@ def _enroll(base_url: str, identity: dict) -> dict:
 
 def _heartbeat(base_url: str, identity: dict) -> dict:
     report = build_version_report()
+    cached = report.get("cached_releases") or {}
     payload = {
         "hub_version": report.get("hub") or {"version_code": 0, "version_name": "unknown"},
         "schema_version": "sqlite-v1",
         "outbox_pending": 0,
         "last_pull_revision": 0,
-        "cached_releases": report.get("cached_releases") or {},
+        "cached_releases": {k: v for k, v in cached.items() if v is not None},
         "devices": report.get("devices") or [],
     }
     response = _request_json(
         "POST",
         f"{base_url}/api/v1/hubs/{identity['hub_id']}/heartbeat",
         payload,
+        token=identity["token"],
+    )
+    _request_json(
+        "POST",
+        f"{base_url}/api/v1/hubs/{identity['hub_id']}/telemetry",
+        {"cached_releases": cached},
         token=identity["token"],
     )
     identity["status"] = response.get("hub_status")
@@ -138,35 +148,25 @@ def _apply_bootstrap(payload: dict):
     catalog = payload.get("catalog")
     if isinstance(catalog, dict):
         _write_json(CATALOG_PATH, catalog)
-
     store = payload.get("store") or {}
     if store:
         set_setting("central:store_id", str(store.get("id") or ""))
         set_setting("central:store_code", str(store.get("code") or ""))
         set_setting("central:store_name", str(store.get("name") or ""))
-
     for key, value in (payload.get("settings") or {}).items():
         set_setting(f"setting:{key}", json.dumps(value, ensure_ascii=False))
-
     set_sync_status("ok", None, pull=True)
 
 
 def pull_bootstrap() -> dict:
     with _lock:
-        config = get_central_config()
-        base_url = (config.get("base_url") or "").rstrip("/")
+        base_url = (get_central_config().get("base_url") or "").rstrip("/")
         if not base_url:
             raise RuntimeError("Central Base URL is not configured")
-
         identity = get_identity()
         if not identity.get("hub_id") or not identity.get("token"):
             identity = _enroll(base_url, identity)
-
-        payload = _request_json(
-            "GET",
-            f"{base_url}/api/v1/hubs/{identity['hub_id']}/bootstrap",
-            token=identity["token"],
-        )
+        payload = _request_json("GET", f"{base_url}/api/v1/hubs/{identity['hub_id']}/bootstrap", token=identity["token"])
         _apply_bootstrap(payload)
         identity["last_bootstrap_at"] = now_iso()
         identity["status"] = "active"
@@ -178,37 +178,21 @@ def pull_bootstrap() -> dict:
 
 def sync_once() -> dict:
     with _lock:
-        config = get_central_config()
-        base_url = (config.get("base_url") or "").rstrip("/")
+        base_url = (get_central_config().get("base_url") or "").rstrip("/")
         identity = get_identity()
-
         if not base_url:
-            return {"status": "not_configured", "identity": identity}
-
+            return {"status": "not_configured", "identity": {k: v for k, v in identity.items() if k != "token"}}
         try:
             if not identity.get("hub_id") or not identity.get("token"):
                 identity = _enroll(base_url, identity)
-
             heartbeat = _heartbeat(base_url, identity)
-            result = {
-                "status": "ok",
-                "hub_id": identity.get("hub_id"),
-                "hub_status": heartbeat.get("hub_status"),
-                "store_id": heartbeat.get("store_id"),
-                "desired_apps": heartbeat.get("desired_apps") or {},
-            }
-
+            result = {"status": "ok", "hub_id": identity.get("hub_id"), "hub_status": heartbeat.get("hub_status"), "store_id": heartbeat.get("store_id"), "desired_apps": heartbeat.get("desired_apps") or {}}
             if heartbeat.get("hub_status") == "active" and heartbeat.get("store_id"):
-                payload = _request_json(
-                    "GET",
-                    f"{base_url}/api/v1/hubs/{identity['hub_id']}/bootstrap",
-                    token=identity["token"],
-                )
+                payload = _request_json("GET", f"{base_url}/api/v1/hubs/{identity['hub_id']}/bootstrap", token=identity["token"])
                 _apply_bootstrap(payload)
                 identity["last_bootstrap_at"] = now_iso()
                 _save_identity(identity)
                 result["bootstrap"] = "applied"
-
             set_sync_status("ok", None, push=True)
             return result
         except Exception as exc:
@@ -222,14 +206,7 @@ def sync_once() -> dict:
 def central_status() -> dict:
     config = get_central_config()
     identity = get_identity()
-    return {
-        "configured": bool(config.get("base_url")),
-        "base_url": config.get("base_url") or "",
-        "identity": {key: value for key, value in identity.items() if key != "token"},
-        "has_credential": bool(identity.get("token")),
-        "bootstrap_cached": BOOTSTRAP_PATH.exists(),
-        "catalog_cached": CATALOG_PATH.exists(),
-    }
+    return {"configured": bool(config.get("base_url")), "base_url": config.get("base_url") or "", "identity": {k: v for k, v in identity.items() if k != "token"}, "has_credential": bool(identity.get("token")), "bootstrap_cached": BOOTSTRAP_PATH.exists(), "catalog_cached": CATALOG_PATH.exists()}
 
 
 def _worker():
