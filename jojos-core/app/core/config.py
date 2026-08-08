@@ -15,7 +15,13 @@ RELEASES_DIR = Path(
 
 READY_VISIBLE_SECONDS = 300
 
-# Production defaults for fixed in-store network printer
-LABEL_PRINTER_HOST = "192.168.0.240"
-LABEL_PRINTER_PORT = 9100
+# JoJo production label printer.
+# XPrinter XP-365, Wi-Fi, ESC/POS over the standard RAW TCP printing port.
+# The address is reserved on every Hub LAN so the printer configuration is the
+# same at every point.
+LABEL_PRINTER_MODEL = "XPrinter XP-365"
+LABEL_PRINTER_PROTOCOL = "escpos"
+LABEL_PRINTER_HOST = os.environ.get("JOJOS_LABEL_PRINTER_HOST", "192.168.50.100")
+LABEL_PRINTER_PORT = int(os.environ.get("JOJOS_LABEL_PRINTER_PORT", "9100"))
 LABEL_SIZE_MM = (58, 40)
+LABEL_PRINTER_CODEPAGE = "cp866"
