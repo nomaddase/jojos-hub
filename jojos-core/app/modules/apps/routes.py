@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app.core.config import RELEASES_DIR
 
@@ -20,10 +20,6 @@ APP_TITLES = {
     "kitchen": "JoJo Kitchen",
 }
 
-# APK checksum verification used to re-read the complete APK every time the
-# browser opened /download/... and again before the download itself. On small
-# Hub hardware that made the first request look like the site was unavailable.
-# Cache a successful verification for the exact file mtime/size instead.
 _verified: dict[str, tuple[int, int, str]] = {}
 
 
@@ -53,15 +49,13 @@ def _sha256(path: Path) -> str:
 
 def _validate_apk(role: str, apk_path: Path, expected_sha: str) -> None:
     stat = apk_path.stat()
-    key = role
-    cached = _verified.get(key)
     fingerprint = (stat.st_mtime_ns, stat.st_size, expected_sha)
-    if cached == fingerprint:
+    if _verified.get(role) == fingerprint:
         return
     actual_sha = _sha256(apk_path)
     if actual_sha != expected_sha:
         raise HTTPException(status_code=503, detail="Cached APK checksum does not match manifest")
-    _verified[key] = fingerprint
+    _verified[role] = fingerprint
 
 
 def read_release_manifest(app_role: str) -> dict | None:
@@ -96,6 +90,23 @@ def read_release_manifest(app_role: str) -> dict | None:
         "download_page_url": f"/download/{role}",
         "size_bytes": actual_size,
     }
+
+
+def _apk_response(role: str):
+    manifest = read_release_manifest(role)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail="No APK release cached on this hub")
+    path = _apk_path(role)
+    return FileResponse(
+        path=str(path),
+        media_type="application/vnd.android.package-archive",
+        filename=APP_FILES[role],
+        headers={
+            "ETag": f'"sha256:{manifest.get("sha256", "")}"',
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{APP_FILES[role]}"',
+        },
+    )
 
 
 def _download_page(role: str) -> str:
@@ -177,29 +188,14 @@ def app_version(app_role: str):
 @router.get("/api/apps/{app_role}/apk")
 def app_apk(app_role: str):
     role = app_role.strip().lower()
-    manifest = read_release_manifest(role)
-    if manifest is None:
-        raise HTTPException(status_code=404, detail="No APK release cached on this hub")
-
-    path = _apk_path(role)
-    return FileResponse(
-        path=str(path),
-        media_type="application/vnd.android.package-archive",
-        filename=APP_FILES[role],
-        headers={
-            "ETag": f'"sha256:{manifest.get("sha256", "")}"',
-            "Cache-Control": "no-store",
-            "Content-Disposition": f'attachment; filename="{APP_FILES[role]}"',
-        },
-    )
+    if role not in APP_FILES:
+        raise HTTPException(status_code=404, detail="Unknown application role")
+    return _apk_response(role)
 
 
 @router.get("/download/{app_role}", response_class=HTMLResponse)
 def app_download_page(app_role: str):
-    return HTMLResponse(
-        _download_page(app_role),
-        headers={"Cache-Control": "no-store"},
-    )
+    return HTMLResponse(_download_page(app_role), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/download/{app_role}.apk")
@@ -207,4 +203,4 @@ def short_apk_download(app_role: str):
     role = app_role.strip().lower()
     if role not in APP_FILES:
         raise HTTPException(status_code=404, detail="Unknown application role")
-    return RedirectResponse(url=f"/api/apps/{role}/apk", status_code=307)
+    return _apk_response(role)
