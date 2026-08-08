@@ -12,7 +12,7 @@ on:
 
 concurrency:
   group: jojos-hub-production
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
