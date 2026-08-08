@@ -125,6 +125,9 @@ def init_db():
             update_status TEXT,
             update_error TEXT,
             last_ip TEXT,
+            hub_installation_id TEXT,
+            binding_id TEXT,
+            bound_at TEXT,
             first_seen_at TEXT NOT NULL,
             last_seen_at TEXT NOT NULL
         )
@@ -155,5 +158,15 @@ def init_db():
         for col_name, col_type in option_needed_columns:
             if not column_exists(conn, "order_item_options", col_name):
                 cur.execute(f"ALTER TABLE order_item_options ADD COLUMN {col_name} {col_type}")
+
+        device_needed_columns = [
+            ("hub_installation_id", "TEXT"),
+            ("binding_id", "TEXT"),
+            ("bound_at", "TEXT"),
+        ]
+
+        for col_name, col_type in device_needed_columns:
+            if not column_exists(conn, "devices", col_name):
+                cur.execute(f"ALTER TABLE devices ADD COLUMN {col_name} {col_type}")
 
         conn.commit()
