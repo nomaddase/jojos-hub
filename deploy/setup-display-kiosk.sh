@@ -7,6 +7,7 @@ set -euo pipefail
 
 DISPLAY_USER="${JOJOS_DISPLAY_USER:-jojos-display}"
 DISPLAY_URL="${JOJOS_DISPLAY_URL:-http://127.0.0.1:8080/display}"
+DISPLAY_MODE="${JOJOS_DISPLAY_MODE:-1920x1080}"
 SESSION_NAME="jojos-display"
 SESSION_SCRIPT="/usr/local/bin/jojos-display-session"
 LIGHTDM_CONF="/etc/lightdm/lightdm.conf.d/50-jojos-display.conf"
@@ -54,6 +55,19 @@ cat >"${SESSION_SCRIPT}" <<EOF
 set -u
 
 DISPLAY_URL="${DISPLAY_URL}"
+DISPLAY_MODE="${DISPLAY_MODE}"
+
+# Force the directly attached public order monitor to Full HD when the mode is
+# advertised by the display. If the monitor cannot do it, keep its native mode
+# instead of preventing the board from starting.
+OUTPUT="\$(xrandr --query 2>/dev/null | awk '/ connected/{print \$1; exit}')"
+if [ -n "\${OUTPUT}" ]; then
+  if xrandr --query 2>/dev/null | grep -Eq "^[[:space:]]+\${DISPLAY_MODE}([[:space:]]|$)"; then
+    xrandr --output "\${OUTPUT}" --mode "\${DISPLAY_MODE}" --primary || xrandr --output "\${OUTPUT}" --auto --primary || true
+  else
+    xrandr --output "\${OUTPUT}" --auto --primary || true
+  fi
+fi
 
 # Do not blank, suspend or power off the directly connected order-status monitor.
 xset s off || true
@@ -136,4 +150,5 @@ systemctl restart lightdm.service
 echo "JoJo public order display is configured."
 echo "Display account: ${DISPLAY_USER}"
 echo "Display URL:     ${DISPLAY_URL}"
+echo "Target mode:     ${DISPLAY_MODE}"
 echo "It will auto-login and reopen the board after every Hub reboot."
