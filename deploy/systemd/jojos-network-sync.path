@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch JoJo Central bootstrap for Wi-Fi changes
+After=jojos-core.service
+
+[Path]
+PathChanged=/home/admini/jojos-core/config/central_bootstrap.json
+Unit=jojos-network-sync.service
+
+[Install]
+WantedBy=multi-user.target
