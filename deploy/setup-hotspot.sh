@@ -2,9 +2,8 @@
 set -euo pipefail
 
 # Configure every JoJo store hub with the same store Wi-Fi.
-# The SSID and address are public configuration. The shared password is kept in
-# the private jojos-base repository and is supplied at runtime by
-# deploy/apply-store-network.sh.
+# The SSID and address are public configuration. The shared password is supplied
+# at runtime either from Central Base or from the private jojos-base repository.
 #
 # Defaults:
 #   SSID:    JoJos-Hub
@@ -30,12 +29,13 @@ if [ "${EUID}" -ne 0 ]; then
 fi
 
 if [ -z "${PSK}" ]; then
-  echo "JOJOS_WIFI_PASSWORD is required. Use deploy/apply-store-network.sh."
+  echo "JOJOS_WIFI_PASSWORD is required."
   exit 1
 fi
 
-if [ ${#PSK} -lt 8 ]; then
-  echo "Wi-Fi password must contain at least 8 characters."
+PSK_BYTES="$(printf '%s' "${PSK}" | wc -c)"
+if [ "${PSK_BYTES}" -lt 8 ] || [ "${PSK_BYTES}" -gt 63 ]; then
+  echo "Wi-Fi password must contain 8..63 bytes."
   exit 1
 fi
 
@@ -49,28 +49,53 @@ if [ -z "${IFACE}" ]; then
 fi
 
 nmcli radio wifi on
-nmcli connection delete "${CON_NAME}" >/dev/null 2>&1 || true
 
-nmcli connection add \
-  type wifi \
-  ifname "${IFACE}" \
-  con-name "${CON_NAME}" \
-  autoconnect yes \
-  ssid "${SSID}"
+if nmcli -t -f NAME connection show | grep -Fxq "${CON_NAME}"; then
+  nmcli connection modify "${CON_NAME}" \
+    connection.interface-name "${IFACE}" \
+    connection.autoconnect yes \
+    connection.autoconnect-priority 100 \
+    802-11-wireless.ssid "${SSID}" \
+    802-11-wireless.mode ap \
+    802-11-wireless.band bg \
+    ipv4.method shared \
+    ipv4.addresses "${ADDR}" \
+    ipv6.method disabled \
+    802-11-wireless-security.key-mgmt wpa-psk \
+    802-11-wireless-security.proto rsn \
+    802-11-wireless-security.pairwise ccmp \
+    802-11-wireless-security.group ccmp \
+    802-11-wireless-security.pmf 1 \
+    802-11-wireless-security.psk "${PSK}"
+else
+  nmcli connection add \
+    type wifi \
+    ifname "${IFACE}" \
+    con-name "${CON_NAME}" \
+    autoconnect yes \
+    ssid "${SSID}"
 
-nmcli connection modify "${CON_NAME}" \
-  connection.autoconnect yes \
-  connection.autoconnect-priority 100 \
-  802-11-wireless.mode ap \
-  802-11-wireless.band bg \
-  ipv4.method shared \
-  ipv4.addresses "${ADDR}" \
-  ipv6.method disabled \
-  wifi-sec.key-mgmt wpa-psk \
-  wifi-sec.psk "${PSK}"
+  nmcli connection modify "${CON_NAME}" \
+    connection.autoconnect yes \
+    connection.autoconnect-priority 100 \
+    802-11-wireless.mode ap \
+    802-11-wireless.band bg \
+    ipv4.method shared \
+    ipv4.addresses "${ADDR}" \
+    ipv6.method disabled \
+    802-11-wireless-security.key-mgmt wpa-psk \
+    802-11-wireless-security.proto rsn \
+    802-11-wireless-security.pairwise ccmp \
+    802-11-wireless-security.group ccmp \
+    802-11-wireless-security.pmf 1 \
+    802-11-wireless-security.psk "${PSK}"
+fi
 
+# Re-activate so changed SSID/password/security settings take effect immediately.
+nmcli connection down "${CON_NAME}" >/dev/null 2>&1 || true
 nmcli connection up "${CON_NAME}"
 
 echo "Hotspot '${SSID}' is active on ${IFACE}."
 echo "Hub address: ${ADDR}"
+echo "Security: WPA2-PSK (RSN/CCMP), PMF disabled for broad Android compatibility."
 echo "KSO/Kitchen default Hub URL: http://${ADDR%/*}:8080"
