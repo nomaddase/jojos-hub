@@ -23,7 +23,11 @@ from app.modules.sync.service import set_setting, set_sync_status
 
 CONFIG_PATH = CONFIG_DIR / "central.json"
 IDENTITY_PATH = CONFIG_DIR / "central_identity.json"
-BOOTSTRAP_PATH = CONFIG_DIR / "central_bootstrap.json"
+BOOTSTRAP_PATH = CONFIG_DIR / "central_bootstrap_cache.json"
+NETWORK_POLICY_PATH = CONFIG_DIR / "central_network.json"
+# Older installs watched this file every 30-60 seconds and restarted the AP on
+# every bootstrap refresh. It must remain absent once the new runtime starts.
+LEGACY_BOOTSTRAP_PATH = CONFIG_DIR / "central_bootstrap.json"
 CATALOG_PATH = CONFIG_DIR / "catalog_cache.json"
 
 _lock = threading.Lock()
@@ -41,13 +45,22 @@ def _read_json(path: Path, default: dict | None = None) -> dict:
         return dict(default or {})
 
 
-def _write_json(path: Path, value: dict):
+def _write_json(path: Path, value: dict) -> bool:
+    """Atomically write JSON only when its content actually changed."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    rendered = json.dumps(value, ensure_ascii=False, indent=2)
+    try:
+        if path.read_text(encoding="utf-8") == rendered:
+            os.chmod(path, 0o600)
+            return False
+    except Exception:
+        pass
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.write_text(rendered, encoding="utf-8")
     os.chmod(tmp, 0o600)
     tmp.replace(path)
     os.chmod(path, 0o600)
+    return True
 
 
 def get_central_config() -> dict:
@@ -197,6 +210,22 @@ def _push_outbox(base_url: str, identity: dict) -> dict:
 
 def _apply_bootstrap(payload: dict):
     _write_json(BOOTSTRAP_PATH, payload)
+
+    # Network policy has its own cache. This file changes only when the actual
+    # network settings change, not when inventory/catalog/bootstrap changes.
+    network = ((payload.get("settings") or {}).get("network") or {})
+    if isinstance(network, dict) and network:
+        _write_json(NETWORK_POLICY_PATH, {"settings": {"network": network}})
+
+    # Neutralize legacy installs immediately without requiring sudo: old
+    # systemd path/timer units can keep running, but with this file absent their
+    # old helper exits before touching the hotspot. A later privileged helper
+    # refresh points them at central_network.json.
+    try:
+        LEGACY_BOOTSTRAP_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
+
     catalog = payload.get("catalog")
     if isinstance(catalog, dict):
         _write_json(CATALOG_PATH, catalog)
