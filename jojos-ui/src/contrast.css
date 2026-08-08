@@ -1,0 +1,116 @@
+:root {
+  --jojo-red: #e30613;
+  --jojo-red-dark: #b00017;
+  --jojo-red-soft: #fff0f2;
+  --jojo-white: #ffffff;
+  --jojo-ink: #1d1d1f;
+  --jojo-muted: #5f5a5c;
+}
+
+html,
+body,
+#root {
+  color: var(--jojo-ink);
+  background: #fff7f8;
+}
+
+/* Red surfaces always carry white text. */
+.kso-primary-btn,
+.kso-primary-cta,
+.checkout-btn,
+.kso-select-btn,
+.kso-mode-option.takeaway,
+.kso-service-badge.takeaway,
+.kso-landing-mark,
+.kso-mode-mark,
+.kso-brand-badge,
+.kso-success-mark,
+.kitchen-badge.service.takeaway,
+.action-btn.ready,
+.action-btn.cancel {
+  background: var(--jojo-red) !important;
+  color: var(--jojo-white) !important;
+}
+
+.kso-primary-btn *,
+.kso-primary-cta *,
+.checkout-btn *,
+.kso-select-btn *,
+.kso-mode-option.takeaway *,
+.kso-service-badge.takeaway *,
+.kso-landing-mark *,
+.kso-mode-mark *,
+.kso-brand-badge *,
+.kso-success-mark *,
+.kitchen-badge.service.takeaway *,
+.action-btn.ready *,
+.action-btn.cancel * {
+  color: var(--jojo-white) !important;
+}
+
+.kso-lang-pill.active {
+  background: var(--jojo-red) !important;
+  border-color: var(--jojo-red) !important;
+  color: var(--jojo-white) !important;
+}
+
+.kso-bottom-bar {
+  background: var(--jojo-red-dark) !important;
+  color: var(--jojo-white) !important;
+}
+
+.kso-bottom-bar *,
+.kso-bottom-label {
+  color: var(--jojo-white) !important;
+}
+
+/* Light surfaces use dark copy; muted gray never sits on brand red. */
+.kso-landing-subtitle,
+.kso-mode-subtitle,
+.kso-header-subtitle,
+.kso-section-head p,
+.kso-product-description,
+.kso-config-text,
+.kso-option-note,
+.kso-option-chip-price,
+.kso-summary-line.muted,
+.kso-drawer-eyebrow,
+.kso-cart-row-option,
+.kso-cart-row-note,
+.kso-upsell-subtitle,
+.kso-upsell-price,
+.screen-sub,
+.summary-chip span,
+.tile-label,
+.tile-meta,
+.tile-item-mod,
+.kitchen-side-subtitle,
+.kitchen-side-block-title,
+.kitchen-side-item-mod,
+.display-zone-empty {
+  color: var(--jojo-muted);
+}
+
+.kso-group-btn.active,
+.kso-option-chip.selected,
+.kso-option-chip.selected .kso-option-chip-price,
+.kso-product-image,
+.kso-config-hero,
+.kso-success-eyebrow {
+  color: var(--jojo-red-dark) !important;
+}
+
+.action-btn.close {
+  background: #ece9ea;
+  color: var(--jojo-ink);
+}
+
+.kso-primary-btn:disabled,
+.kso-primary-cta:disabled,
+.checkout-btn:disabled,
+.kso-select-btn:disabled {
+  background: #d7d3d4 !important;
+  color: #575255 !important;
+  opacity: 1;
+  box-shadow: none;
+}
