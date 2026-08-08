@@ -17,6 +17,7 @@ from app.modules.central.outbox import (
     pending_events,
     prune_delivered,
 )
+from app.modules.inventory.service import upsert_inventory_item
 from app.modules.system.routes import build_version_report
 from app.modules.sync.service import set_setting, set_sync_status
 
@@ -199,6 +200,20 @@ def _apply_bootstrap(payload: dict):
     catalog = payload.get("catalog")
     if isinstance(catalog, dict):
         _write_json(CATALOG_PATH, catalog)
+
+    # Base is authoritative for the point's ingredient balances. Mirror them
+    # into the local Hub inventory table so /api/catalog can calculate the
+    # stop list from each product BOM even while the KSO itself stays offline.
+    for row in payload.get("inventory") or []:
+        component_id = str(row.get("component_id") or "").strip()
+        if not component_id:
+            continue
+        try:
+            qty = float(row.get("qty") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        upsert_inventory_item(component_id, qty, qty > 0)
+
     store = payload.get("store") or {}
     if store:
         set_setting("central:store_id", str(store.get("id") or ""))
