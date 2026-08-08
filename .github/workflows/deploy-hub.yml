@@ -20,7 +20,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, jojos-hub]
     timeout-minutes: 20
     env:
-      JOJOS_CENTRAL_BASE_URL: https://base.92.38.49.173.sslip.io
+      JOJOS_CENTRAL_BASE_URL: https://base.jojos.kz
 
     steps:
       - name: Checkout
