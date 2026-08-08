@@ -1,0 +1,9 @@
+[Unit]
+Description=JoJo Hub local HTTP port 80 socket
+
+[Socket]
+ListenStream=0.0.0.0:80
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target
