@@ -5,10 +5,10 @@ set -euo pipefail
 # This script never prints the Wi-Fi password.
 
 BOOTSTRAP="${JOJOS_BOOTSTRAP_PATH:-/home/admini/jojos-core/config/central_bootstrap.json}"
-SETUP_SCRIPT="${JOJOS_HOTSPOT_SETUP:-/home/admini/jojos-monorepo/deploy/setup-hotspot.sh}"
+SETUP_SCRIPT="${JOJOS_HOTSPOT_SETUP:-/usr/local/sbin/jojos-setup-hotspot}"
 
 if [ "${EUID}" -ne 0 ]; then
-  echo "Run with sudo: sudo bash deploy/apply-central-network.sh"
+  echo "Run as root."
   exit 1
 fi
 
@@ -17,8 +17,8 @@ if [ ! -f "${BOOTSTRAP}" ]; then
   exit 1
 fi
 
-if [ ! -f "${SETUP_SCRIPT}" ]; then
-  echo "Hotspot setup script not found: ${SETUP_SCRIPT}"
+if [ ! -x "${SETUP_SCRIPT}" ]; then
+  echo "Hotspot setup helper not found: ${SETUP_SCRIPT}"
   exit 1
 fi
 
@@ -49,7 +49,6 @@ try:
 except ValueError as exc:
     raise SystemExit(f"Invalid Hub IP from Central Base: {hub_ip}") from exc
 
-# Shell-quoted temporary environment file, mode 0600. Password is never echoed.
 with open(target, "w", encoding="utf-8") as out:
     out.write(f"JOJOS_WIFI_SSID={shlex.quote(ssid)}\n")
     out.write(f"JOJOS_WIFI_PASSWORD={shlex.quote(password)}\n")
@@ -62,6 +61,6 @@ set -a
 source "${TMP}"
 set +a
 
-bash "${SETUP_SCRIPT}"
+"${SETUP_SCRIPT}"
 
 echo "Central Base Wi-Fi settings were applied to the physical Hub hotspot."
