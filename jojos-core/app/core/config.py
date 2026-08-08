@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parents[1]
@@ -8,6 +9,9 @@ STATIC_DIR = PROJECT_DIR / "static"
 DATA_DIR = PROJECT_DIR / "data"
 MEDIA_DIR = DATA_DIR / "media"
 CONFIG_DIR = PROJECT_DIR / "config"
+RELEASES_DIR = Path(
+    os.environ.get("JOJOS_RELEASES_DIR", str(PROJECT_DIR.parent / "jojos-releases"))
+)
 
 READY_VISIBLE_SECONDS = 300
 

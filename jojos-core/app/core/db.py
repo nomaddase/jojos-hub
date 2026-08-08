@@ -112,6 +112,24 @@ def init_db():
         )
         """)
 
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS devices (
+            device_id TEXT PRIMARY KEY,
+            app_role TEXT NOT NULL,
+            version_code INTEGER NOT NULL,
+            version_name TEXT NOT NULL,
+            android_version TEXT,
+            model TEXT,
+            manufacturer TEXT,
+            build_fingerprint TEXT,
+            update_status TEXT,
+            update_error TEXT,
+            last_ip TEXT,
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL
+        )
+        """)
+
         cur.execute("INSERT OR IGNORE INTO sync_status (id) VALUES (1)")
 
         order_needed_columns = [

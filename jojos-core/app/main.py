@@ -4,7 +4,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import MEDIA_DIR, STATIC_DIR
 from app.core.db import init_db
+from app.modules.apps.routes import router as apps_router
 from app.modules.catalog.routes import router as catalog_router
+from app.modules.devices.routes import router as devices_router
 from app.modules.display.routes import router as display_router
 from app.modules.events.routes import router as events_router
 from app.modules.inventory.routes import router as inventory_router
@@ -13,6 +15,7 @@ from app.modules.media.routes import router as media_router
 from app.modules.orders.routes import router as orders_router
 from app.modules.printing.routes import router as printing_router
 from app.modules.sync.routes import router as sync_router
+from app.modules.system.routes import router as system_router
 from app.modules.ui.routes import router as ui_router
 
 app = FastAPI(title="JoJo Core")
@@ -40,6 +43,9 @@ app.include_router(events_router)
 app.include_router(inventory_router)
 app.include_router(media_router)
 app.include_router(sync_router)
+app.include_router(apps_router)
+app.include_router(devices_router)
+app.include_router(system_router)
 app.include_router(ui_router)
 
 
