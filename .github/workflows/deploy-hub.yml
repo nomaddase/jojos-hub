@@ -92,8 +92,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          systemctl --user daemon-reload
-          systemctl --user restart jojos-core.service
+          sudo systemctl restart jojos-core.service
 
       - name: Health check
         shell: bash
@@ -106,6 +105,6 @@ jobs:
             fi
             sleep 1
           done
-          systemctl --user status jojos-core.service --no-pager || true
-          journalctl --user -u jojos-core.service -n 100 --no-pager || true
+          sudo systemctl status jojos-core.service --no-pager || true
+          sudo journalctl -u jojos-core.service -n 100 --no-pager || true
           exit 1
