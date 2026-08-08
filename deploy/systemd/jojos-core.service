@@ -5,6 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=admini
+Group=admini
 WorkingDirectory=/home/admini/jojos-core
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/admini/jojos-core/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
@@ -14,4 +16,4 @@ TimeoutStopSec=15
 KillSignal=SIGINT
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
