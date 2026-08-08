@@ -66,6 +66,24 @@ jobs:
           fi
           venv/bin/python -m compileall app
 
+      - name: Refresh privileged hotspot helpers
+        shell: bash
+        run: |
+          set -euo pipefail
+          if sudo -n install -m 0755 deploy/setup-hotspot.sh /usr/local/sbin/jojos-setup-hotspot \
+            && sudo -n install -m 0755 deploy/apply-central-network.sh /usr/local/sbin/jojos-apply-central-network \
+            && sudo -n install -m 0644 deploy/systemd/jojos-network-sync.service /etc/systemd/system/jojos-network-sync.service \
+            && sudo -n install -m 0644 deploy/systemd/jojos-network-sync.path /etc/systemd/system/jojos-network-sync.path \
+            && sudo -n install -m 0644 deploy/systemd/jojos-network-sync.timer /etc/systemd/system/jojos-network-sync.timer; then
+            sudo -n systemctl daemon-reload
+            sudo -n systemctl enable --now jojos-network-sync.path jojos-network-sync.timer
+            echo "Stable central Wi-Fi helpers refreshed."
+          else
+            echo "WARNING: runner cannot refresh privileged Wi-Fi helpers automatically."
+            echo "Stopping periodic Wi-Fi reconfiguration to prevent Android disconnect loops."
+            sudo -n systemctl stop jojos-network-sync.path jojos-network-sync.timer 2>/dev/null || true
+          fi
+
       - name: Set up Node for legacy web fallback
         if: hashFiles('jojos-ui/package.json') != ''
         uses: actions/setup-node@v4
@@ -146,7 +164,7 @@ jobs:
           set -euo pipefail
           if [ -x /usr/local/sbin/jojos-apply-central-network ] && systemctl cat jojos-network-sync.service >/dev/null 2>&1; then
             if sudo -n systemctl start jojos-network-sync.service 2>/dev/null; then
-              echo "Central Base Wi-Fi policy applied."
+              echo "Central Base Wi-Fi policy checked without unnecessary hotspot restart."
             else
               echo "Central Wi-Fi sync is installed; policy will apply by its path/timer service."
             fi
