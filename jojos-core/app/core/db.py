@@ -133,6 +133,23 @@ def init_db():
         )
         """)
 
+        # Durable Hub -> Base event outbox. Operational events are committed
+        # in the same SQLite transaction as the local business change and are
+        # marked delivered only after Base acknowledges their event_id.
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS central_outbox (
+            event_id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            delivered_at TEXT,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at TEXT,
+            last_error TEXT
+        )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_central_outbox_pending ON central_outbox(delivered_at, created_at)")
+
         cur.execute("INSERT OR IGNORE INTO sync_status (id) VALUES (1)")
 
         order_needed_columns = [
@@ -154,7 +171,6 @@ def init_db():
         option_needed_columns = [
             ("price", "INTEGER NOT NULL DEFAULT 0"),
         ]
-
         for col_name, col_type in option_needed_columns:
             if not column_exists(conn, "order_item_options", col_name):
                 cur.execute(f"ALTER TABLE order_item_options ADD COLUMN {col_name} {col_type}")
@@ -164,9 +180,45 @@ def init_db():
             ("binding_id", "TEXT"),
             ("bound_at", "TEXT"),
         ]
-
         for col_name, col_type in device_needed_columns:
             if not column_exists(conn, "devices", col_name):
                 cur.execute(f"ALTER TABLE devices ADD COLUMN {col_name} {col_type}")
+
+        # SQLite triggers make order events durable without coupling WAN sync to
+        # request handlers. The trigger executes inside the same transaction as
+        # order creation/status change, so a committed order always has an event.
+        cur.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_orders_central_created
+        AFTER INSERT ON orders
+        BEGIN
+            INSERT INTO central_outbox (
+                event_id, event_type, payload_json, created_at,
+                delivered_at, attempt_count, last_attempt_at, last_error
+            ) VALUES (
+                lower(hex(randomblob(16))),
+                'order.created',
+                COALESCE(NEW.order_snapshot_json, '{}'),
+                NEW.created_at,
+                NULL, 0, NULL, NULL
+            );
+        END
+        """)
+        cur.execute("""
+        CREATE TRIGGER IF NOT EXISTS trg_orders_central_status
+        AFTER UPDATE OF status ON orders
+        WHEN NEW.status <> OLD.status AND NEW.status IN ('ready', 'cancelled')
+        BEGIN
+            INSERT INTO central_outbox (
+                event_id, event_type, payload_json, created_at,
+                delivered_at, attempt_count, last_attempt_at, last_error
+            ) VALUES (
+                lower(hex(randomblob(16))),
+                'order.' || NEW.status,
+                COALESCE(NEW.order_snapshot_json, '{}'),
+                COALESCE(NEW.ready_at, NEW.cancelled_at, NEW.created_at),
+                NULL, 0, NULL, NULL
+            );
+        END
+        """)
 
         conn.commit()

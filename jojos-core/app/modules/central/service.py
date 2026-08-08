@@ -10,6 +10,13 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from app.core.config import CONFIG_DIR
+from app.modules.central.outbox import (
+    mark_batch_error,
+    mark_push_result,
+    pending_count,
+    pending_events,
+    prune_delivered,
+)
 from app.modules.system.routes import build_version_report
 from app.modules.sync.service import set_setting, set_sync_status
 
@@ -96,7 +103,14 @@ def _enroll(base_url: str, identity: dict) -> dict:
             "software_version": hub_version.get("version_name", "unknown"),
             "version_code": int(hub_version.get("version_code") or 0),
             "schema_version": "sqlite-v1",
-            "capabilities": ["orders", "inventory", "printing", "apk-cache", "device-telemetry"],
+            "capabilities": [
+                "orders",
+                "inventory",
+                "printing",
+                "apk-cache",
+                "device-telemetry",
+                "durable-outbox",
+            ],
         },
     )
     identity.update({
@@ -117,7 +131,7 @@ def _heartbeat(base_url: str, identity: dict) -> dict:
     payload = {
         "hub_version": report.get("hub") or {"version_code": 0, "version_name": "unknown"},
         "schema_version": "sqlite-v1",
-        "outbox_pending": 0,
+        "outbox_pending": pending_count(),
         "last_pull_revision": 0,
         "cached_releases": {k: v for k, v in cached.items() if v is not None},
         "devices": report.get("devices") or [],
@@ -141,6 +155,43 @@ def _heartbeat(base_url: str, identity: dict) -> dict:
     identity["last_error"] = None
     _save_identity(identity)
     return response
+
+
+def _push_outbox(base_url: str, identity: dict) -> dict:
+    events = pending_events(100)
+    if not events:
+        return {"pending_before": 0, "accepted": 0, "rejected": 0, "pending_after": 0}
+    event_ids = [event["event_id"] for event in events]
+    wire_events = [
+        {
+            "event_id": event["event_id"],
+            "type": event["type"],
+            "created_at": event["created_at"],
+            "payload": event["payload"],
+        }
+        for event in events
+    ]
+    try:
+        response = _request_json(
+            "POST",
+            f"{base_url}/api/v1/hubs/{identity['hub_id']}/events",
+            {"events": wire_events},
+            token=identity["token"],
+            timeout=15,
+        )
+    except Exception as exc:
+        mark_batch_error(event_ids, str(exc))
+        raise
+    accepted = response.get("accepted") or []
+    rejected = response.get("rejected") or []
+    mark_push_result(accepted, rejected)
+    prune_delivered()
+    return {
+        "pending_before": len(events),
+        "accepted": len(accepted),
+        "rejected": len(rejected),
+        "pending_after": pending_count(),
+    }
 
 
 def _apply_bootstrap(payload: dict):
@@ -186,7 +237,15 @@ def sync_once() -> dict:
             if not identity.get("hub_id") or not identity.get("token"):
                 identity = _enroll(base_url, identity)
             heartbeat = _heartbeat(base_url, identity)
-            result = {"status": "ok", "hub_id": identity.get("hub_id"), "hub_status": heartbeat.get("hub_status"), "store_id": heartbeat.get("store_id"), "desired_apps": heartbeat.get("desired_apps") or {}}
+            outbox = _push_outbox(base_url, identity)
+            result = {
+                "status": "ok",
+                "hub_id": identity.get("hub_id"),
+                "hub_status": heartbeat.get("hub_status"),
+                "store_id": heartbeat.get("store_id"),
+                "desired_apps": heartbeat.get("desired_apps") or {},
+                "outbox": outbox,
+            }
             if heartbeat.get("hub_status") == "active" and heartbeat.get("store_id"):
                 payload = _request_json("GET", f"{base_url}/api/v1/hubs/{identity['hub_id']}/bootstrap", token=identity["token"])
                 _apply_bootstrap(payload)
@@ -200,13 +259,21 @@ def sync_once() -> dict:
             identity["last_error_at"] = now_iso()
             _save_identity(identity)
             set_sync_status("error", str(exc))
-            return {"status": "error", "error": str(exc), "hub_id": identity.get("hub_id")}
+            return {"status": "error", "error": str(exc), "hub_id": identity.get("hub_id"), "outbox_pending": pending_count()}
 
 
 def central_status() -> dict:
     config = get_central_config()
     identity = get_identity()
-    return {"configured": bool(config.get("base_url")), "base_url": config.get("base_url") or "", "identity": {k: v for k, v in identity.items() if k != "token"}, "has_credential": bool(identity.get("token")), "bootstrap_cached": BOOTSTRAP_PATH.exists(), "catalog_cached": CATALOG_PATH.exists()}
+    return {
+        "configured": bool(config.get("base_url")),
+        "base_url": config.get("base_url") or "",
+        "identity": {k: v for k, v in identity.items() if k != "token"},
+        "has_credential": bool(identity.get("token")),
+        "bootstrap_cached": BOOTSTRAP_PATH.exists(),
+        "catalog_cached": CATALOG_PATH.exists(),
+        "outbox_pending": pending_count(),
+    }
 
 
 def _worker():
