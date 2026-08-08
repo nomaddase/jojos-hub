@@ -91,8 +91,11 @@ if [ -f "${UI}/package.json" ]; then
 fi
 
 install -m 0644 "${CHECKOUT}/deploy/systemd/jojos-core.service" /etc/systemd/system/jojos-core.service
+install -m 0644 "${CHECKOUT}/deploy/systemd/jojos-http-proxy.socket" /etc/systemd/system/jojos-http-proxy.socket
+install -m 0644 "${CHECKOUT}/deploy/systemd/jojos-http-proxy.service" /etc/systemd/system/jojos-http-proxy.service
 systemctl daemon-reload
 systemctl enable --now jojos-core.service
+systemctl enable --now jojos-http-proxy.socket
 
 for i in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8080/api/health; then
@@ -100,6 +103,7 @@ for i in $(seq 1 30); do
     echo "JoJo Core is healthy."
     echo "Checkout: ${CHECKOUT}"
     echo "Runtime:  ${CORE}"
+    echo "Local HTTP proxy: port 80 -> 8080"
     echo "Next: configure LAN/Wi-Fi and GitHub self-hosted runners."
     exit 0
   fi
