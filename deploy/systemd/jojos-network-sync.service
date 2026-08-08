@@ -1,0 +1,8 @@
+[Unit]
+Description=Apply JoJo Central Base Wi-Fi settings to hotspot
+After=NetworkManager.service jojos-core.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jojos-apply-central-network
