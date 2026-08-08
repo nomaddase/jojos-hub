@@ -14,11 +14,16 @@ from app.modules.events.routes import router as events_router
 from app.modules.inventory.routes import router as inventory_router
 from app.modules.kitchen.routes import router as kitchen_router
 from app.modules.media.routes import router as media_router
+from app.modules.orders.pricing_patch import install_paid_multi_pricing
 from app.modules.orders.routes import router as orders_router
 from app.modules.printing.routes import router as printing_router
 from app.modules.sync.routes import router as sync_router
 from app.modules.system.routes import router as system_router
 from app.modules.ui.routes import router as ui_router
+
+# KSO paid add-ons use their configured price for every selected option. Keep
+# this rule authoritative on Hub, not only in the Android UI.
+install_paid_multi_pricing()
 
 app = FastAPI(title="JoJo Core")
 
