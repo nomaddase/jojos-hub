@@ -123,16 +123,13 @@ jobs:
           STATUS="$(curl -fsS http://127.0.0.1:8080/api/central/status)"
           python3 -c 'import json,os,sys; d=json.loads(sys.stdin.read()); expected=os.environ["JOJOS_CENTRAL_BASE_URL"]; actual=d.get("base_url"); assert actual==expected, f"Central Base URL mismatch: {actual} != {expected}"; print("Central Base URL pinned to HTTPS")' <<<"$STATUS"
 
-      - name: Install and apply Central Base Wi-Fi policy
+      - name: Apply centrally managed Wi-Fi if installed
         shell: bash
         run: |
           set -euo pipefail
-          sudo install -m 0755 deploy/setup-hotspot.sh /usr/local/sbin/jojos-setup-hotspot
-          sudo install -m 0755 deploy/apply-central-network.sh /usr/local/sbin/jojos-apply-central-network
-          sudo install -m 0644 deploy/systemd/jojos-network-sync.service /etc/systemd/system/jojos-network-sync.service
-          sudo install -m 0644 deploy/systemd/jojos-network-sync.path /etc/systemd/system/jojos-network-sync.path
-          sudo install -m 0644 deploy/systemd/jojos-network-sync.timer /etc/systemd/system/jojos-network-sync.timer
-          sudo systemctl daemon-reload
-          sudo systemctl enable --now jojos-network-sync.path jojos-network-sync.timer
-          sudo systemctl start jojos-network-sync.service
-          sudo systemctl --no-pager --full status jojos-network-sync.service || true
+          if [ -x /usr/local/sbin/jojos-apply-central-network ] && systemctl cat jojos-network-sync.service >/dev/null 2>&1; then
+            sudo systemctl start jojos-network-sync.service
+            echo "Central Base Wi-Fi policy applied."
+          else
+            echo "Central Wi-Fi sync helper is not installed yet; run deploy/install-network-sync.sh once with sudo on the Hub."
+          fi
