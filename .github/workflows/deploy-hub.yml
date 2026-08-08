@@ -53,6 +53,12 @@ jobs:
             --exclude '__pycache__/' \
             ./jojos-core/ /home/admini/jojos-core/
 
+      - name: Prepare Hub runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 deploy/prepare-runtime.py /home/admini/jojos-core
+
       - name: Update Python dependencies
         shell: bash
         run: |
