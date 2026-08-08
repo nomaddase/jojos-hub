@@ -1,29 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Configure the hub as a Wi-Fi hotspot using NetworkManager.
-# Secrets are passed at runtime and are never stored in Git.
+# Configure every JoJo store hub with the same recovery/store Wi-Fi.
+# These credentials are intentionally static so KSO/Kitchen devices can move
+# between stores, reconnect automatically, and then re-bind to the new Hub ID.
+# The project owner explicitly chose to keep these store-LAN credentials in Git.
 #
-# Example:
-#   sudo JOJOS_WIFI_SSID='JoJo-Hub' JOJOS_WIFI_PASSWORD='strong-password' bash deploy/setup-hotspot.sh
+# Defaults:
+#   SSID:    JoJos-Hub
+#   Password: JoJosHub2026!
+#   Hub IP:  192.168.50.1/24
 #
-# Optional:
+# Optional overrides are still supported for exceptional installations:
+#   JOJOS_WIFI_SSID=...
+#   JOJOS_WIFI_PASSWORD=...
 #   JOJOS_WIFI_IFACE=wlan0
 #   JOJOS_WIFI_ADDRESS=192.168.50.1/24
 
-SSID="${JOJOS_WIFI_SSID:-}"
-PSK="${JOJOS_WIFI_PASSWORD:-}"
+SSID="${JOJOS_WIFI_SSID:-JoJos-Hub}"
+PSK="${JOJOS_WIFI_PASSWORD:-JoJosHub2026!}"
 ADDR="${JOJOS_WIFI_ADDRESS:-192.168.50.1/24}"
 CON_NAME="${JOJOS_WIFI_CONNECTION:-jojos-hotspot}"
 IFACE="${JOJOS_WIFI_IFACE:-}"
 
 if [ "${EUID}" -ne 0 ]; then
   echo "Run with sudo."
-  exit 1
-fi
-
-if [ -z "${SSID}" ] || [ -z "${PSK}" ]; then
-  echo "JOJOS_WIFI_SSID and JOJOS_WIFI_PASSWORD are required."
   exit 1
 fi
 
@@ -41,6 +42,7 @@ if [ -z "${IFACE}" ]; then
   exit 1
 fi
 
+nmcli radio wifi on
 nmcli connection delete "${CON_NAME}" >/dev/null 2>&1 || true
 
 nmcli connection add \
@@ -51,6 +53,8 @@ nmcli connection add \
   ssid "${SSID}"
 
 nmcli connection modify "${CON_NAME}" \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 100 \
   802-11-wireless.mode ap \
   802-11-wireless.band bg \
   ipv4.method shared \
@@ -63,4 +67,4 @@ nmcli connection up "${CON_NAME}"
 
 echo "Hotspot '${SSID}' is active on ${IFACE}."
 echo "Hub address: ${ADDR}"
-echo "Keep the password outside Git (password manager / deployment secret)."
+echo "KSO/Kitchen default Hub URL: http://${ADDR%/*}:8080"
