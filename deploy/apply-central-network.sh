@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Apply the network settings currently delivered by Central Base in the Hub bootstrap.
-# The central worker refreshes bootstrap frequently. Wi-Fi MUST NOT be bounced on
-# every refresh: KSO/Kitchen devices would be disconnected every 30-60 seconds.
-# This helper therefore restarts the hotspot only when SSID/password/IP actually
-# changed, or when the hotspot is not active.
-# This script never prints the Wi-Fi password.
+# Apply the network settings currently delivered by Central Base.
+# Network policy is cached separately from the frequently refreshed operational
+# bootstrap so catalog/inventory sync can never bounce the store Wi-Fi.
+# The hotspot is restarted only when SSID/password/IP actually changed, or when
+# the hotspot is not active. This script never prints the Wi-Fi password.
 
-BOOTSTRAP="${JOJOS_BOOTSTRAP_PATH:-/home/admini/jojos-core/config/central_bootstrap.json}"
+NETWORK_POLICY="${JOJOS_NETWORK_POLICY_PATH:-/home/admini/jojos-core/config/central_network.json}"
 SETUP_SCRIPT="${JOJOS_HOTSPOT_SETUP:-/usr/local/sbin/jojos-setup-hotspot}"
 STATE_DIR="${JOJOS_NETWORK_STATE_DIR:-/var/lib/jojos}"
 STATE_FILE="${STATE_DIR}/network-settings.sha256"
@@ -18,8 +17,8 @@ if [ "${EUID}" -ne 0 ]; then
   exit 1
 fi
 
-if [ ! -f "${BOOTSTRAP}" ]; then
-  echo "Central bootstrap is not available yet: ${BOOTSTRAP}"
+if [ ! -f "${NETWORK_POLICY}" ]; then
+  echo "Central network policy is not available yet: ${NETWORK_POLICY}"
   exit 1
 fi
 
@@ -32,7 +31,7 @@ TMP="$(mktemp)"
 trap 'rm -f "${TMP}"' EXIT
 chmod 600 "${TMP}"
 
-python3 - "${BOOTSTRAP}" "${TMP}" <<'PY'
+python3 - "${NETWORK_POLICY}" "${TMP}" <<'PY'
 import hashlib
 import ipaddress
 import json
@@ -56,7 +55,6 @@ try:
 except ValueError as exc:
     raise SystemExit(f"Invalid Hub IP from Central Base: {hub_ip}") from exc
 
-# Hash the desired values without writing or logging the password itself.
 fingerprint = hashlib.sha256(
     json.dumps(
         {"ssid": ssid, "password": password, "hub_ip": hub_ip},
