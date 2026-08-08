@@ -50,52 +50,44 @@ fi
 
 nmcli radio wifi on
 
-if nmcli -t -f NAME connection show | grep -Fxq "${CON_NAME}"; then
-  nmcli connection modify "${CON_NAME}" \
-    connection.interface-name "${IFACE}" \
-    connection.autoconnect yes \
-    connection.autoconnect-priority 100 \
-    802-11-wireless.ssid "${SSID}" \
-    802-11-wireless.mode ap \
-    802-11-wireless.band bg \
-    ipv4.method shared \
-    ipv4.addresses "${ADDR}" \
-    ipv6.method disabled \
-    802-11-wireless-security.key-mgmt wpa-psk \
-    802-11-wireless-security.proto rsn \
-    802-11-wireless-security.pairwise ccmp \
-    802-11-wireless-security.group ccmp \
-    802-11-wireless-security.pmf 1 \
-    802-11-wireless-security.psk "${PSK}"
-else
+if ! nmcli -t -f NAME connection show | grep -Fxq "${CON_NAME}"; then
   nmcli connection add \
     type wifi \
     ifname "${IFACE}" \
     con-name "${CON_NAME}" \
     autoconnect yes \
     ssid "${SSID}"
-
-  nmcli connection modify "${CON_NAME}" \
-    connection.autoconnect yes \
-    connection.autoconnect-priority 100 \
-    802-11-wireless.mode ap \
-    802-11-wireless.band bg \
-    ipv4.method shared \
-    ipv4.addresses "${ADDR}" \
-    ipv6.method disabled \
-    802-11-wireless-security.key-mgmt wpa-psk \
-    802-11-wireless-security.proto rsn \
-    802-11-wireless-security.pairwise ccmp \
-    802-11-wireless-security.group ccmp \
-    802-11-wireless-security.pmf 1 \
-    802-11-wireless-security.psk "${PSK}"
 fi
 
-# Re-activate so changed SSID/password/security settings take effect immediately.
+# Keep one stable AP profile. The central-network wrapper calls this only when
+# network settings really changed or the AP is down, so this reactivation does
+# not periodically kick Android clients off the network.
+nmcli connection modify "${CON_NAME}" \
+  connection.interface-name "${IFACE}" \
+  connection.autoconnect yes \
+  connection.autoconnect-priority 100 \
+  connection.autoconnect-retries 0 \
+  802-11-wireless.ssid "${SSID}" \
+  802-11-wireless.mode ap \
+  802-11-wireless.band bg \
+  802-11-wireless.powersave 2 \
+  802-11-wireless.cloned-mac-address permanent \
+  ipv4.method shared \
+  ipv4.addresses "${ADDR}" \
+  ipv4.never-default yes \
+  ipv6.method disabled \
+  802-11-wireless-security.key-mgmt wpa-psk \
+  802-11-wireless-security.proto rsn \
+  802-11-wireless-security.pairwise ccmp \
+  802-11-wireless-security.group ccmp \
+  802-11-wireless-security.pmf 1 \
+  802-11-wireless-security.psk "${PSK}"
+
 nmcli connection down "${CON_NAME}" >/dev/null 2>&1 || true
 nmcli connection up "${CON_NAME}"
 
 echo "Hotspot '${SSID}' is active on ${IFACE}."
 echo "Hub address: ${ADDR}"
 echo "Security: WPA2-PSK (RSN/CCMP), PMF disabled for broad Android compatibility."
-echo "KSO/Kitchen default Hub URL: http://${ADDR%/*}:8080"
+echo "Wi-Fi power saving: disabled for stable KSO/Kitchen sessions."
+echo "KSO/Kitchen default Hub URL: http://${ADDR%/*}"
