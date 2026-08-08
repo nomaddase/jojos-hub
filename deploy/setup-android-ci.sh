@@ -6,6 +6,7 @@ CHECKOUT="/home/${RUNTIME_USER}/jojos-monorepo"
 SIGN_DIR="/home/${RUNTIME_USER}/.config/jojos-android"
 KEYSTORE="${SIGN_DIR}/debug.keystore"
 SECRET_NAME="ANDROID_DEBUG_KEYSTORE_BASE64"
+ALLOW_NEW_KEY="${JOJOS_ALLOW_NEW_SIGNING_KEY:-0}"
 
 if [ "${EUID}" -eq 0 ]; then
   echo "Run this script as ${RUNTIME_USER}, not root."
@@ -39,7 +40,14 @@ mkdir -p "${SIGN_DIR}"
 chmod 700 "${SIGN_DIR}"
 
 if [ ! -f "${KEYSTORE}" ]; then
-  echo "Creating persistent JoJo Android debug signing key..."
+  if [ "${ALLOW_NEW_KEY}" != "1" ]; then
+    echo "ERROR: persistent JoJo Android signing key is missing: ${KEYSTORE}"
+    echo "Do NOT generate a replacement casually: changing this key makes already-installed KSO/Kitchen APKs non-updatable."
+    echo "Restore the original keystore backup first."
+    echo "Only for a brand-new deployment with no installed devices, rerun with JOJOS_ALLOW_NEW_SIGNING_KEY=1."
+    exit 1
+  fi
+  echo "Creating initial persistent JoJo Android signing key..."
   keytool -genkeypair \
     -keystore "${KEYSTORE}" \
     -storepass android \
@@ -53,6 +61,17 @@ if [ ! -f "${KEYSTORE}" ]; then
   chmod 600 "${KEYSTORE}"
 else
   echo "Persistent Android signing key already exists; keeping it unchanged."
+fi
+
+keytool -list -keystore "${KEYSTORE}" -storepass android -alias androiddebugkey >/dev/null
+
+echo "Backing up signing keystore locally before changing CI secrets..."
+BACKUP_DIR="/home/${RUNTIME_USER}/jojos-backups/android-signing"
+mkdir -p "${BACKUP_DIR}"
+chmod 700 "${BACKUP_DIR}"
+if [ ! -f "${BACKUP_DIR}/debug.keystore" ]; then
+  cp -a "${KEYSTORE}" "${BACKUP_DIR}/debug.keystore"
+  chmod 600 "${BACKUP_DIR}/debug.keystore"
 fi
 
 set_secret() {
@@ -97,4 +116,5 @@ echo "Android CI setup complete."
 echo "Kitchen runner: /home/${RUNTIME_USER}/actions-runners/jojos-kitchen"
 echo "KSO runner:     /home/${RUNTIME_USER}/actions-runners/jojos-kso"
 echo "Signing key:   ${KEYSTORE}"
+echo "Signing backup:${BACKUP_DIR}/debug.keystore"
 echo "The private key was not printed and was not committed to Git."
