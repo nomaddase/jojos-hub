@@ -114,3 +114,70 @@ body,
   opacity: 1;
   box-shadow: none;
 }
+
+/* Public order board target: 1920x1080 landscape. The grid intentionally uses
+   four columns and up to four rows per queue so more order numbers stay visible
+   without sacrificing legibility from a distance. */
+.display-board {
+  width: 100vw;
+  height: 100vh;
+  padding: 18px;
+  gap: 18px !important;
+  overflow: hidden;
+}
+
+.display-zone {
+  min-height: 0 !important;
+  height: calc(100vh - 36px);
+  padding: 18px !important;
+  gap: 14px !important;
+  border-radius: 24px !important;
+}
+
+.display-zone-title {
+  font-size: 34px !important;
+}
+
+.display-zone-count {
+  min-width: 58px !important;
+  height: 58px !important;
+  border-radius: 16px !important;
+  font-size: 24px !important;
+}
+
+.display-order-grid.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.display-order-grid {
+  gap: 10px !important;
+}
+
+.display-order-card,
+.display-order-grid.ultra .display-order-card {
+  min-height: 0 !important;
+  border-radius: 16px !important;
+  padding: 10px !important;
+}
+
+.display-order-number,
+.display-order-grid.ultra .display-order-number {
+  font-size: clamp(30px, 2.35vw, 46px) !important;
+  letter-spacing: -0.04em;
+}
+
+.display-order-card.ready,
+.display-order-card.ready * {
+  color: #ffffff !important;
+}
+
+.display-order-card.accepted,
+.display-order-card.accepted * {
+  color: #1d1d1f !important;
+}
+
+@media (max-width: 1200px) {
+  .display-board {
+    padding: 10px;
+  }
+}
