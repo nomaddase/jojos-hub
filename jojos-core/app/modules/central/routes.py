@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.modules.central.service import central_status, pull_bootstrap, set_central_config, sync_once
+from app.modules.central.resilient import central_status, pull_bootstrap, set_central_config, sync_once
 
 router = APIRouter()
 
