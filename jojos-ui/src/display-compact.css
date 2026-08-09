@@ -1,0 +1,119 @@
+/* Public order board: fixed 1920x1080-oriented compact layout.
+   Keep accepted/ready zones side-by-side at every kiosk viewport size and never
+   stretch one order card to fill half of the screen. */
+
+.display-board {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  grid-template-rows: 1fr !important;
+  gap: 16px !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+}
+
+.display-zone {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: calc(100vh - 32px) !important;
+  padding: 18px !important;
+  gap: 14px !important;
+  border-radius: 24px !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.display-zone-head {
+  align-items: center !important;
+}
+
+.display-zone-title {
+  font-size: 34px !important;
+}
+
+.display-zone-count {
+  min-width: 58px !important;
+  width: 58px !important;
+  height: 58px !important;
+  border-radius: 16px !important;
+  font-size: 24px !important;
+}
+
+.display-order-grid,
+.display-order-grid.cols-2,
+.display-order-grid.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: 112px !important;
+  align-content: start !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+
+.display-order-card,
+.display-order-grid.ultra .display-order-card {
+  width: 100% !important;
+  height: 112px !important;
+  min-height: 112px !important;
+  padding: 8px 10px !important;
+  border-radius: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+}
+
+.display-order-number,
+.display-order-grid.ultra .display-order-number {
+  display: block !important;
+  max-width: 100% !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: clip !important;
+  font-size: clamp(30px, 2.35vw, 46px) !important;
+  line-height: 0.95 !important;
+  letter-spacing: -0.06em !important;
+  text-align: center !important;
+}
+
+.display-zone-empty {
+  min-height: 112px !important;
+  align-self: start !important;
+  font-size: 20px !important;
+}
+
+/* Chromium kiosk can report a logical viewport below 1200 px depending on DPI.
+   Do not let the legacy responsive rule stack accepted/ready vertically. */
+@media (max-width: 1200px) {
+  .display-board {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-rows: 1fr !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+  }
+
+  .display-zone {
+    height: calc(100vh - 24px) !important;
+    min-height: 0 !important;
+    padding: 12px !important;
+  }
+
+  .display-order-grid,
+  .display-order-grid.cols-2,
+  .display-order-grid.cols-4 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-auto-rows: 96px !important;
+    gap: 8px !important;
+  }
+
+  .display-order-card,
+  .display-order-grid.ultra .display-order-card {
+    height: 96px !important;
+    min-height: 96px !important;
+    border-radius: 16px !important;
+  }
+
+  .display-order-number,
+  .display-order-grid.ultra .display-order-number {
+    font-size: clamp(24px, 3vw, 38px) !important;
+  }
+}
