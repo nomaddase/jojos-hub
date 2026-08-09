@@ -35,6 +35,38 @@ jobs:
           except Exception as exc:
               print('tcp_9100=CLOSED', repr(exc))
           PY
+          echo '=== ESC/POS status probe (no printing) ==='
+          python3 - <<'PY'
+          import socket
+          host='192.168.50.100'; port=9100
+          try:
+              with socket.create_connection((host, port), timeout=3) as s:
+                  s.settimeout(1.5)
+                  s.sendall(b'\x10\x04\x01')
+                  try:
+                      data=s.recv(32)
+                      print('escpos_status=', data.hex() if data else 'EMPTY')
+                  except socket.timeout:
+                      print('escpos_status=NO_RESPONSE')
+          except Exception as exc:
+              print('escpos_probe_error=', repr(exc))
+          PY
+          echo '=== TSPL status probe (no printing) ==='
+          python3 - <<'PY'
+          import socket
+          host='192.168.50.100'; port=9100
+          try:
+              with socket.create_connection((host, port), timeout=3) as s:
+                  s.settimeout(1.5)
+                  s.sendall(b'~HS\r\n')
+                  try:
+                      data=s.recv(256)
+                      print('tspl_status=', repr(data))
+                  except socket.timeout:
+                      print('tspl_status=NO_RESPONSE')
+          except Exception as exc:
+              print('tspl_probe_error=', repr(exc))
+          PY
           echo '=== Effective printer settings ==='
           cd /home/admini/jojos-core
           if [ -x venv/bin/python ]; then
