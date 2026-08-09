@@ -13,10 +13,10 @@ from app.modules.orders.service import build_order_response
 from app.modules.printing.label_template_58x40 import (
     expand_order_to_unit_labels,
     render_kitchen_label_58x40_text,
-    render_unit_label_58x40_escpos,
     render_unit_label_58x40_text,
 )
 from app.modules.printing.printer_adapters import PrinterAdapter, RawTcpEscPosAdapter
+from app.modules.printing.xp365_tspl import render_unit_label_58x40_tspl
 
 
 class LabelPayload(BaseModel):
@@ -76,7 +76,7 @@ def _insert_job(
             (
                 job_id,
                 order_id,
-                "xp365_escpos_label_58x40",
+                "xp365_tspl_label_58x40",
                 printer_host,
                 printer_port,
                 "queued",
@@ -108,6 +108,10 @@ def create_kitchen_label_job(order_id: str, adapter: PrinterAdapter | None = Non
     """
     Print one physical 58x40 label per ordered unit.
 
+    XP-365 is driven in TSPL label mode over raw TCP/9100. The full sticker is
+    rendered as a bitmap so Cyrillic and sizing are deterministic. A 58 mm
+    sticker is centered in the printer's 76 mm printable area.
+
     Example: an order containing 10 drinks with qty=10 produces 10 labels. Every
     label carries the same large order marker plus its 1/10 ... 10/10 sequence.
     Printing failures do not roll back the already-created order; each failed
@@ -123,11 +127,11 @@ def create_kitchen_label_job(order_id: str, adapter: PrinterAdapter | None = Non
     results: list[dict[str, Any]] = []
     for unit in units:
         preview = render_unit_label_58x40_text(payload_dict, unit)
-        escpos = render_unit_label_58x40_escpos(payload_dict, unit)
+        tspl = render_unit_label_58x40_tspl(payload_dict, unit)
         job_id = _insert_job(order_id, payload, unit, preview, host, port)
         attempts = 1
         try:
-            active_adapter.send(escpos, host=host, port=port)
+            active_adapter.send(tspl, host=host, port=port)
             _update_job(job_id, status="sent", attempts=attempts)
             results.append(
                 {
@@ -156,7 +160,7 @@ def create_kitchen_label_job(order_id: str, adapter: PrinterAdapter | None = Non
     failed = len(results) - sent
     return {
         "status": "sent" if results and failed == 0 else ("failed" if sent == 0 else "partial"),
-        "printer": {"host": host, "port": port, "model": "XPrinter XP-365", "protocol": "ESC/POS"},
+        "printer": {"host": host, "port": port, "model": "XPrinter XP-365", "protocol": "TSPL label mode"},
         "label_size_mm": {"width": 58, "height": 40},
         "labels_total": len(results),
         "labels_sent": sent,
