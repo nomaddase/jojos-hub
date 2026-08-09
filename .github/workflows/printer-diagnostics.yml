@@ -1,0 +1,64 @@
+name: Printer Diagnostics
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/printer-diagnostics.yml'
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    name: Diagnose XP-365 on Hub
+    runs-on: [self-hosted, linux, x64, jojos-hub]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Printer network and queue diagnostics
+        shell: bash
+        run: |
+          set -u
+          echo '=== Hub routes ==='
+          ip -4 addr || true
+          ip route || true
+          echo '=== Printer neighbor ==='
+          ip neigh show 192.168.50.100 || true
+          echo '=== Printer ping ==='
+          ping -c 2 -W 1 192.168.50.100 || true
+          echo '=== TCP 9100 ==='
+          python3 - <<'PY'
+          import socket
+          host='192.168.50.100'; port=9100
+          try:
+              with socket.create_connection((host, port), timeout=3):
+                  print('tcp_9100=OPEN')
+          except Exception as exc:
+              print('tcp_9100=CLOSED', repr(exc))
+          PY
+          echo '=== Effective printer settings ==='
+          cd /home/admini/jojos-core
+          if [ -x venv/bin/python ]; then
+            venv/bin/python - <<'PY'
+          from app.modules.settings.service import get_effective_settings
+          from app.core.config import LABEL_PRINTER_HOST, LABEL_PRINTER_PORT
+          print('core_endpoint=', LABEL_PRINTER_HOST, LABEL_PRINTER_PORT)
+          print('settings_printer=', get_effective_settings().get('printer'))
+          PY
+          fi
+          echo '=== Recent orders / print jobs ==='
+          python3 - <<'PY'
+          import sqlite3, os
+          db='/home/admini/jojos-core/jojos_core.db'
+          if not os.path.exists(db):
+              print('DB_NOT_FOUND'); raise SystemExit
+          con=sqlite3.connect(db); con.row_factory=sqlite3.Row
+          cur=con.cursor()
+          for q,title in [
+              ("select id,number,status,created_at,total from orders order by created_at desc limit 10", 'orders'),
+              ("select id,order_id,job_type,printer_host,printer_port,status,attempts,created_at,sent_at,last_error from print_jobs order by created_at desc limit 30", 'print_jobs'),
+          ]:
+              print('---', title, '---')
+              try:
+                  for row in cur.execute(q): print(dict(row))
+              except Exception as exc: print('QUERY_ERROR', repr(exc))
+          PY
