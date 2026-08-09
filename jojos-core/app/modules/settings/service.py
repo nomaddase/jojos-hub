@@ -23,7 +23,7 @@ RUNTIME_DEFAULTS = {
         "default": "dine_in",
     },
     "printer": {
-        "label_host": "192.168.0.240",
+        "label_host": "192.168.50.100",
         "label_port": 9100,
         "auto_print_kitchen_label_on_create": True,
     },
