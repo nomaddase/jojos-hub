@@ -52,21 +52,29 @@ jobs:
               except Exception as exc:
                   print(f'escpos_probe_{n}_error=', repr(exc))
           PY
-          echo '=== TSPL status probe (no printing) ==='
+          echo '=== Send one TSPL label-mode test ==='
           python3 - <<'PY'
           import socket
           host='192.168.50.100'; port=9100
+          payload=(
+              b'SIZE 58 mm,40 mm\r\n'
+              b'GAP 3 mm,0 mm\r\n'
+              b'DIRECTION 1\r\n'
+              b'CLS\r\n'
+              b'BOX 10,10,450,300,3\r\n'
+              b'TEXT 35,45,"3",0,2,2,"JOJO TEST"\r\n'
+              b'TEXT 35,140,"3",0,1,1,"XP-365 / 58x40"\r\n'
+              b'TEXT 35,205,"3",0,1,1,"TSPL LABEL MODE"\r\n'
+              b'PRINT 1,1\r\n'
+          )
           try:
               with socket.create_connection((host, port), timeout=3) as s:
-                  s.settimeout(1.5)
-                  s.sendall(b'~HS\r\n')
-                  try:
-                      data=s.recv(256)
-                      print('tspl_status=', repr(data))
-                  except socket.timeout:
-                      print('tspl_status=NO_RESPONSE')
+                  s.settimeout(3)
+                  s.sendall(payload)
+                  s.shutdown(socket.SHUT_WR)
+              print('tspl_test=SENT bytes=', len(payload))
           except Exception as exc:
-              print('tspl_probe_error=', repr(exc))
+              print('tspl_test=ERROR', repr(exc))
           PY
           echo '=== Effective printer settings ==='
           cd /home/admini/jojos-core
