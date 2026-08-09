@@ -1,19 +1,45 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from app.core.config import LABEL_SIZE_MM
+from app.modules.settings.service import get_setting_value
 
 LABEL_CHAR_WIDTH = 28
 ITEM_CHAR_WIDTH = 24
 DPI = 203
+DOTS_PER_MM = DPI / 25.4
 LABEL_WIDTH_PX = round(LABEL_SIZE_MM[0] / 25.4 * DPI)
 LABEL_HEIGHT_PX = round(LABEL_SIZE_MM[1] / 25.4 * DPI)
 MARGIN_X = 18
 MARGIN_Y = 10
+
+DEFAULT_LABEL_TEMPLATE = {
+    "version": 1,
+    "width_mm": 58,
+    "height_mm": 40,
+    "calibration": {
+        "x_offset_mm": 0.0,
+        "y_offset_mm": 0.0,
+        "gap_mm": 3.0,
+        "density": 8,
+        "invert_bitmap": False,
+    },
+    "fields": {
+        "brand": {"x": 2.0, "y": 1.0, "w": 28.0, "font_size": 18, "bold": True, "align": "left", "visible": True},
+        "datetime": {"x": 31.0, "y": 1.0, "w": 25.0, "font_size": 13, "bold": False, "align": "right", "visible": True},
+        "order": {"x": 2.0, "y": 6.0, "w": 54.0, "font_size": 48, "bold": True, "align": "center", "visible": True},
+        "sequence": {"x": 2.0, "y": 14.5, "w": 54.0, "font_size": 18, "bold": True, "align": "center", "visible": True},
+        "product": {"x": 2.0, "y": 19.0, "w": 54.0, "font_size": 23, "bold": True, "align": "left", "visible": True},
+        "modifiers": {"x": 2.0, "y": 27.0, "w": 54.0, "font_size": 15, "bold": False, "align": "left", "visible": True},
+        "service": {"x": 2.0, "y": 34.0, "w": 54.0, "h": 5.0, "font_size": 17, "bold": True, "align": "center", "visible": True},
+    },
+}
 
 FONT_CANDIDATES = {
     "regular": [
@@ -64,12 +90,12 @@ def _font(size: int, *, bold: bool = False):
     key = "bold" if bold else "regular"
     for candidate in FONT_CANDIDATES[key]:
         if Path(candidate).exists():
-            return ImageFont.truetype(candidate, size=size)
+            return ImageFont.truetype(candidate, size=max(8, int(size)))
     return ImageFont.load_default()
 
 
-def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: int, min_size: int = 14, *, bold: bool = False):
-    size = start_size
+def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: int, min_size: int = 8, *, bold: bool = False):
+    size = max(min_size, int(start_size))
     while size > min_size:
         font = _font(size, bold=bold)
         box = draw.textbbox((0, 0), text, font=font)
@@ -82,6 +108,142 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, max_width: int, start_size: 
 def _center_x(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     box = draw.textbbox((0, 0), text, font=font)
     return max(MARGIN_X, (LABEL_WIDTH_PX - (box[2] - box[0])) // 2)
+
+
+def _merge_dict(base: dict, override: dict) -> dict:
+    result = deepcopy(base)
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_dict(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def get_runtime_label_template() -> dict:
+    """Read the centrally managed label template mirrored by Hub bootstrap."""
+    try:
+        network = get_setting_value("network", {})
+        if isinstance(network, dict):
+            saved = network.get("label_template")
+            if isinstance(saved, dict):
+                return _merge_dict(DEFAULT_LABEL_TEMPLATE, saved)
+    except Exception:
+        pass
+    return deepcopy(DEFAULT_LABEL_TEMPLATE)
+
+
+def _mm(value: Any, fallback: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _px(mm: Any) -> int:
+    return round(_mm(mm) * DOTS_PER_MM)
+
+
+def _align(value: Any) -> str:
+    value = str(value or "left").lower()
+    return value if value in {"left", "center", "right"} else "left"
+
+
+def _format_created_at(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed.strftime("%d.%m %H:%M")
+    except Exception:
+        return raw[:16].replace("T", " ")
+
+
+def _field_lines(key: str, payload: dict[str, Any], unit: dict[str, Any]) -> list[str]:
+    if key == "brand":
+        return ["JOJO'S"]
+    if key == "datetime":
+        return [_format_created_at(payload.get("created_at"))]
+    if key == "order":
+        return [f"#{payload.get('order_number') or '-'}"]
+    if key == "sequence":
+        return [f"{int(unit.get('label_no') or 1)} / {int(unit.get('label_count') or 1)}"]
+    if key == "product":
+        return _wrap(str(unit.get("name") or "Позиция"), 28, max_lines=2) or ["Позиция"]
+    if key == "modifiers":
+        result = []
+        for modifier in list(unit.get("modifier_lines") or [])[:3]:
+            clean = str(modifier).strip()
+            if clean.startswith("+"):
+                clean = clean[1:].strip()
+            result.append(_clip("+ " + clean, 35))
+        return result
+    if key == "service":
+        return [format_service_mode(str(payload.get("service_mode") or "dine_in"))]
+    return []
+
+
+def _line_x(draw: ImageDraw.ImageDraw, text: str, font, x: int, width: int, align: str) -> int:
+    box = draw.textbbox((0, 0), text, font=font)
+    text_width = max(0, box[2] - box[0])
+    if align == "right":
+        return x + max(0, width - text_width)
+    if align == "center":
+        return x + max(0, (width - text_width) // 2)
+    return x
+
+
+def _draw_template_field(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    key: str,
+    cfg: dict[str, Any],
+    payload: dict[str, Any],
+    unit: dict[str, Any],
+    offset_x: int,
+    offset_y: int,
+) -> None:
+    if cfg.get("visible", True) is False:
+        return
+
+    x = _px(cfg.get("x")) + offset_x
+    y = _px(cfg.get("y")) + offset_y
+    width = max(1, _px(cfg.get("w", 20)))
+    height = max(0, _px(cfg.get("h", 0)))
+    align = _align(cfg.get("align"))
+    bold = bool(cfg.get("bold", False))
+    font_size = max(8, int(_mm(cfg.get("font_size"), 16)))
+    lines = _field_lines(key, payload, unit)
+    if not lines:
+        return
+
+    if key == "service" and height > 0:
+        x2 = min(LABEL_WIDTH_PX - 1, x + width)
+        y2 = min(LABEL_HEIGHT_PX - 1, y + height)
+        if str(payload.get("service_mode") or "dine_in") == "takeaway":
+            draw.rectangle((x, y, x2, y2), fill=0)
+            fill = 1
+        else:
+            draw.rectangle((x, y, x2, y2), fill=1)
+            fill = 0
+    else:
+        fill = 0
+
+    cursor_y = y
+    for line in lines:
+        font = _fit_text(draw, line, width, font_size, 8, bold=bold)
+        box = draw.textbbox((0, 0), line, font=font)
+        line_height = max(1, box[3] - box[1])
+        line_x = _line_x(draw, line, font, x, width, align)
+        if key == "service" and height > 0:
+            line_y = y + max(0, (height - line_height) // 2) - box[1]
+        else:
+            line_y = cursor_y
+        draw.text((line_x, line_y), line, font=font, fill=fill)
+        cursor_y += line_height + 3
+        if cursor_y >= LABEL_HEIGHT_PX:
+            break
 
 
 def expand_order_to_unit_labels(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -126,65 +288,23 @@ def render_unit_label_58x40_text(payload: dict[str, Any], unit: dict[str, Any]) 
 
 
 def _render_label_bitmap(payload: dict[str, Any], unit: dict[str, Any]) -> Image.Image:
-    """Render the complete label to pixels so Cyrillic does not depend on printer codepages."""
+    """Render the complete label from the centrally managed 58x40 template."""
+    template = get_runtime_label_template()
+    calibration = template.get("calibration") if isinstance(template.get("calibration"), dict) else {}
+    offset_x = _px(calibration.get("x_offset_mm", 0))
+    offset_y = _px(calibration.get("y_offset_mm", 0))
+
     image = Image.new("1", (LABEL_WIDTH_PX, LABEL_HEIGHT_PX), 1)
     draw = ImageDraw.Draw(image)
-    usable_width = LABEL_WIDTH_PX - MARGIN_X * 2
+    fields = template.get("fields") if isinstance(template.get("fields"), dict) else {}
 
-    order_number = str(payload.get("order_number") or "-")
-    label_no = int(unit.get("label_no") or 1)
-    label_count = int(unit.get("label_count") or 1)
-    item_name = str(unit.get("name") or "Позиция").strip()
-    modifiers = list(unit.get("modifier_lines") or [])[:3]
+    for key in ("brand", "datetime", "order", "sequence", "product", "modifiers", "service"):
+        cfg = fields.get(key)
+        if isinstance(cfg, dict):
+            _draw_template_field(image, draw, key, cfg, payload, unit, offset_x, offset_y)
 
-    y = MARGIN_Y
-
-    brand = "JOJO'S"
-    brand_font = _font(21, bold=True)
-    draw.text((_center_x(draw, brand, brand_font), y), brand, font=brand_font, fill=0)
-    y += 24
-
-    marker = f"#{order_number}"
-    marker_font = _fit_text(draw, marker, usable_width, 54, 34, bold=True)
-    draw.text((_center_x(draw, marker, marker_font), y), marker, font=marker_font, fill=0)
-    marker_box = draw.textbbox((0, 0), marker, font=marker_font)
-    y += marker_box[3] - marker_box[1] + 3
-
-    seq = f"ЭТИКЕТКА {label_no}/{label_count}"
-    seq_font = _fit_text(draw, seq, usable_width, 19, 14, bold=True)
-    draw.text((_center_x(draw, seq, seq_font), y), seq, font=seq_font, fill=0)
-    y += 24
-
-    draw.line((MARGIN_X, y, LABEL_WIDTH_PX - MARGIN_X, y), fill=0, width=2)
-    y += 7
-
-    product_lines = _wrap(item_name, 28, max_lines=2) or ["Позиция"]
-    product_font = _font(25, bold=True)
-    for line in product_lines:
-        line_font = _fit_text(draw, line, usable_width, 25, 17, bold=True)
-        draw.text((MARGIN_X, y), line, font=line_font, fill=0)
-        box = draw.textbbox((0, 0), line, font=line_font)
-        y += box[3] - box[1] + 4
-
-    modifier_font = _font(18, bold=False)
-    for modifier in modifiers:
-        clean = str(modifier).strip()
-        if clean.startswith("+"):
-            clean = clean[1:].strip()
-        text = "+ " + clean
-        text = _clip(text, 35)
-        line_font = _fit_text(draw, text, usable_width, 18, 14, bold=False)
-        if y + 22 >= LABEL_HEIGHT_PX - 34:
-            break
-        draw.text((MARGIN_X, y), text, font=line_font, fill=0)
-        y += 22
-
-    service = format_service_mode(str(payload.get("service_mode") or "dine_in"))
-    service_font = _fit_text(draw, service, usable_width, 20, 15, bold=True)
-    service_y = LABEL_HEIGHT_PX - 31
-    draw.rectangle((MARGIN_X, service_y - 3, LABEL_WIDTH_PX - MARGIN_X, LABEL_HEIGHT_PX - 7), outline=0, width=2)
-    draw.text((_center_x(draw, service, service_font), service_y), service, font=service_font, fill=0)
-
+    if bool(calibration.get("invert_bitmap", False)):
+        image = ImageOps.invert(image.convert("L")).convert("1")
     return image
 
 
@@ -210,21 +330,14 @@ def _image_to_gs_v0(image: Image.Image) -> bytes:
 
 
 def render_unit_label_58x40_escpos(payload: dict[str, Any], unit: dict[str, Any]) -> bytes:
-    """
-    Render one physical 58x40 label for XP-365 in ESC/POS mode.
-
-    Raster output is intentionally used instead of printer fonts/codepages: it
-    makes Russian text deterministic and matches the exact 58x40 canvas. The
-    final ESC d feed command forces the printer to commit the raster buffer and
-    move off the printed label instead of merely accepting bytes on TCP/9100.
-    """
+    """Render one physical 58x40 label for XP-365 in ESC/POS mode."""
     image = _render_label_bitmap(payload, unit)
     out = bytearray()
-    out += b"\x1b@"           # ESC @: reset to standard mode
-    out += b"\x1ba\x00"      # left alignment
+    out += b"\x1b@"
+    out += b"\x1ba\x00"
     out += _image_to_gs_v0(image)
-    out += b"\x0a"            # LF: commit raster line
-    out += b"\x1bd\x02"      # ESC d 2: explicit print-and-feed
+    out += b"\x0a"
+    out += b"\x1bd\x02"
     return bytes(out)
 
 
