@@ -27,7 +27,17 @@ def read_hub_version() -> dict:
 
 
 def build_version_report() -> dict:
-    devices = list_devices()
+    # Device rows are intentionally retained in the local Hub database as
+    # history, but only devices that are actually heartbeating now belong in
+    # the Central Base heartbeat. Reporting every historical row caused Base to
+    # refresh their last_seen_at every 30 seconds, making every old reinstall
+    # look like a currently connected KSO/Kitchen device forever.
+    devices = [
+        item
+        for item in list_devices()
+        if item.get("online") and item.get("app_role") in {"kso", "kitchen"}
+    ]
+
     releases = {}
     for role in ("kso", "kitchen"):
         try:
