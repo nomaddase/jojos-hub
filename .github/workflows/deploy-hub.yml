@@ -159,9 +159,9 @@ jobs:
             http://127.0.0.1:8080/api/central/config \
             -H 'Content-Type: application/json' \
             --data "{\"base_url\":\"${JOJOS_CENTRAL_BASE_URL}\"}")"
-          python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print(json.dumps({"status":d.get("status"),"base_url":(d.get("config") or {}).get("base_url"),"sync_status":(d.get("sync") or {}).get("status"),"hub_status":(d.get("sync") or {}).get("hub_status"),"store_id":(d.get("sync") or {}).get("store_id")}, ensure_ascii=False))' <<<"$RESPONSE"
+          python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); s=d.get("sync") or {}; print(json.dumps({"status":d.get("status"),"base_url":(d.get("config") or {}).get("base_url"),"sync_status":s.get("status"),"hub_status":s.get("hub_status"),"store_id":s.get("store_id"),"sync_error":s.get("error")}, ensure_ascii=False))' <<<"$RESPONSE"
           STATUS="$(curl -fsS http://127.0.0.1:8080/api/central/status)"
-          python3 -c 'import json,os,sys; d=json.loads(sys.stdin.read()); expected=os.environ["JOJOS_CENTRAL_BASE_URL"]; actual=d.get("base_url"); assert actual==expected, f"Central Base URL mismatch: {actual} != {expected}"; print("Central Base URL pinned to HTTPS")' <<<"$STATUS"
+          python3 -c 'import json,os,sys; d=json.loads(sys.stdin.read()); expected=os.environ["JOJOS_CENTRAL_BASE_URL"]; actual=d.get("base_url"); assert actual==expected, f"Central Base URL mismatch: {actual} != {expected}"; i=d.get("identity") or {}; print(json.dumps({"central_url":actual,"last_error":i.get("last_error"),"last_error_at":i.get("last_error_at"),"hub_id":i.get("hub_id"),"store_id":i.get("store_id")}, ensure_ascii=False))' <<<"$STATUS"
 
       - name: Verify Wi-Fi reconnect loop is neutralized
         shell: bash
