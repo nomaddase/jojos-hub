@@ -6,6 +6,7 @@ from app.core.config import MEDIA_DIR, STATIC_DIR
 from app.core.db import init_db
 from app.modules.apps.routes import router as apps_router
 from app.modules.catalog.routes import router as catalog_router
+from app.modules.central.order_export import start_order_export
 from app.modules.central.routes import router as central_router
 from app.modules.central.service import start_central_sync
 from app.modules.devices.routes import router as devices_router
@@ -53,6 +54,7 @@ app.include_router(ui_router)
 @app.on_event("startup")
 def startup():
     init_db()
+    start_order_export()
     start_central_sync()
 
 
